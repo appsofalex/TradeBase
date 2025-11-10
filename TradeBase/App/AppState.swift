@@ -28,7 +28,16 @@ final class AppState {
     enum AuthProvider: String, Codable { case apple, google, email, guest, x, none }
     var authProvider: AuthProvider = .none
     var authEmail: String? = nil
-    var isAuthenticated: Bool = false
+
+    // When auth flips to false, force role to nil so RootView shows RolePickerView.
+    var isAuthenticated: Bool = false {
+        didSet {
+            if isAuthenticated == false {
+                // Ensure we never route into unauthenticated onboarding for a pre-selected role
+                selectedRole = nil
+            }
+        }
+    }
 
     // Gate used by CustomerHomeView/MyJobsView: only Apple/Google accounts can post jobs.
     var canCustomerPostJobs: Bool {
@@ -92,8 +101,13 @@ final class AppState {
     var profile: UserProfile = AppState.defaultProfile()
 
     // Onboarding/setup flags used by load()
-    var customerOnboardingCompleted: Bool = false
-    var tradespersonOnboardingCompleted: Bool = false
+    // Persist these locally so the onboarding is only shown once per install.
+    var customerOnboardingCompleted: Bool = false {
+        didSet { defaults.set(customerOnboardingCompleted, forKey: customerOnboardingCompletedKey) }
+    }
+    var tradespersonOnboardingCompleted: Bool = false {
+        didSet { defaults.set(tradespersonOnboardingCompleted, forKey: tradespersonOnboardingCompletedKey) }
+    }
     var customerSetupCompleted: Bool = false
     var tradespersonSetupCompleted: Bool = false
 
@@ -149,6 +163,10 @@ final class AppState {
     private let defaults = UserDefaults.standard
     private let notificationsEnabledKey = "prefs.notificationsEnabled"
     private let appearanceModeKey = "prefs.appearanceMode"
+
+    // New: keys for onboarding-completed persistence
+    private let customerOnboardingCompletedKey = "onboarding.customer.completed"
+    private let tradespersonOnboardingCompletedKey = "onboarding.tradesperson.completed"
 
     var notificationsEnabled: Bool = false {
         didSet { defaults.set(notificationsEnabled, forKey: notificationsEnabledKey) }
@@ -312,6 +330,18 @@ final class AppState {
             self.appearanceMode = mode
         } else {
             self.appearanceMode = .system
+        }
+
+        // Seed onboarding-completed flags from UserDefaults (persist across launches)
+        if defaults.object(forKey: customerOnboardingCompletedKey) != nil {
+            self.customerOnboardingCompleted = defaults.bool(forKey: customerOnboardingCompletedKey)
+        } else {
+            self.customerOnboardingCompleted = false
+        }
+        if defaults.object(forKey: tradespersonOnboardingCompletedKey) != nil {
+            self.tradespersonOnboardingCompleted = defaults.bool(forKey: tradespersonOnboardingCompletedKey)
+        } else {
+            self.tradespersonOnboardingCompleted = false
         }
     }
 
@@ -553,9 +583,26 @@ final class AppState {
 
     @MainActor
     func signOut() {
+        // Stop any listeners tied to the authenticated identity
+        self.stopMessagingListeners()
+
+        // Reset authentication and identity-scoped state
         self.isAuthenticated = false
         self.authProvider = .none
         self.authEmail = nil
+
+        // Clear routing hints so RootView returns to the role picker (main screen)
+        self.selectedRole = nil
+        self.pendingJobResumeID = nil
+        self.preferredMyJobsStatus = nil
+        self.navigateToMyJobsSignal = 0
+        self.bypassCustomerSetupOnce = false
+
+        // Optional: clear per-session setup flags (do not touch persisted onboarding-completed flags)
+        self.customerSetupCompleted = false
+        self.tradespersonSetupCompleted = false
+
+        // Reset in-memory profile and badges
         self.profile = AppState.defaultProfile()
         self.unreadMessageCount = 0
     }

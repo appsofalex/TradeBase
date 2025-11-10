@@ -225,7 +225,8 @@ struct CustomerHomeView: View {
     private func prepareAndNavigateToDraft() async {
         // Create a new draft and navigate to the editor
         let owner = state.profile.id
-        let draft = store.createDraft(for: owner, title: "Untitled job")
+        // IMPORTANT: seed with an empty title so the editor shows its placeholder.
+        let draft = store.createDraft(for: owner, title: "")
         newDraftID = draft.id
         shouldNavigateToPostJob = true
     }

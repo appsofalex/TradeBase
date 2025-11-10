@@ -112,9 +112,8 @@ struct OnboardingPagerView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.28)) {
-                        // Use a concrete role or adjust navigation instead of assigning nil
-                        state.navigationDirection = .back
-                        state.selectedRole = .customer
+                        // Go back to role picker instead of switching to customer.
+                        state.selectedRole = nil
                     }
                 } label: {
                     Image(systemName: "chevron.left")
@@ -136,3 +135,4 @@ private extension Image {
         }
     }
 }
+

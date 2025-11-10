@@ -252,7 +252,12 @@ struct CustomerSettingsView: View {
             Button(role: .destructive) {
                 showDeleteAlert = true
             } label: {
-                Label("Delete Account", systemImage: "trash")
+                Label {
+                    Text("Delete Account")
+                } icon: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
             }
             .disabled(isDeleting)
         } footer: {
