@@ -370,10 +370,11 @@ final class AppState {
         if let id = currentAuthIdentity() {
             if let flags = try? await cloudProfileStore.fetchOnboardingFlags(identity: id) {
                 await MainActor.run {
-                    self.customerOnboardingCompleted = flags.customerOnboardingCompleted
-                    self.tradespersonOnboardingCompleted = flags.tradespersonOnboardingCompleted
-                    self.customerSetupCompleted = flags.customerSetupCompleted
-                    self.tradespersonSetupCompleted = flags.tradespersonSetupCompleted
+                    // Merge (OR) remote flags with local ones to avoid ever downgrading a completed device.
+                    self.customerOnboardingCompleted = self.customerOnboardingCompleted || flags.customerOnboardingCompleted
+                    self.tradespersonOnboardingCompleted = self.tradespersonOnboardingCompleted || flags.tradespersonOnboardingCompleted
+                    self.customerSetupCompleted = self.customerSetupCompleted || flags.customerSetupCompleted
+                    self.tradespersonSetupCompleted = self.tradespersonSetupCompleted || flags.tradespersonSetupCompleted
                 }
             }
         }
@@ -773,3 +774,4 @@ actor DefaultCloudProfileStore: CloudProfileStore {
     // Default no-op: backends that don't support appID->identity mapping return nil
     func identity(forAppID appID: UUID) async throws -> String? { nil }
 }
+
