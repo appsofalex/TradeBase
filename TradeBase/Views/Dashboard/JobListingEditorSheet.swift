@@ -1,0 +1,733 @@
+//
+//  JobListingEditorSheet.swift
+//  TradeBase
+//
+
+import SwiftUI
+import MapKit
+import PhotosUI
+
+struct JobListingEditorSheet: View {
+    let listing: JobListing
+    let showPublish: Bool
+    let onSave: (JobListing) -> Void
+    let onPublish: (JobListing) -> Void
+
+    // New: allow caller to set the nav title (default keeps “Post Job”)
+    let viewTitle: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    // Working copies (hydrated on appear)
+    @State private var title: String = ""
+    @State private var description: String = ""
+    @State private var category: TradeType? = nil
+
+    @State private var line1: String = ""
+    @State private var city: String = ""
+    @State private var postcode: String = ""
+
+    @State private var budgetType: JobBudgetType = .quote
+    @State private var budgetMin: Decimal? = nil
+    @State private var budgetMax: Decimal? = nil
+    @State private var currency: String = "GBP"
+
+    @State private var startDate: Date? = nil
+    @State private var isUrgent: Bool = false
+
+    // Photos working copy
+    @State private var photos: [URL] = []
+    @State private var showingPhotoPicker = false
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var isAddingPhotos = false
+    @State private var photoAddError: String? = nil
+
+    // MARK: - Map/geocoding state (mirrors JobPostingWizard)
+    @State private var region = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 51.5074, longitude: -0.1278),
+        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+    )
+    @State private var locatedCoordinate: CLLocationCoordinate2D? = nil
+
+    @State private var geocodeTask: Task<Void, Never>? = nil
+    @State private var isGeocoding: Bool = false
+    @State private var geocodeError: String? = nil
+    @State private var geocodeRequestID: UUID? = nil
+
+    // Keyboard visibility
+    @State private var isKeyboardVisible: Bool = false
+    private let keyboardObserver = KeyboardObserver()
+
+    // Ensure we only hydrate once to avoid wiping user edits if parent view re-renders
+    @State private var didHydrateOnce = false
+
+    // Validation roughly aligned to wizard
+    private var canSave: Bool {
+        let hasBasics = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasLocation = !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                          !postcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasBudget: Bool = {
+            switch budgetType {
+            case .quote: return true
+            case .fixed, .hourly: return budgetMin != nil
+            case .range: return budgetMin != nil && budgetMax != nil
+            }
+        }()
+        return hasBasics && hasLocation && hasBudget
+    }
+
+    init(listing: JobListing,
+         showPublish: Bool,
+         onSave: @escaping (JobListing) -> Void,
+         onPublish: @escaping (JobListing) -> Void,
+         viewTitle: String = "Job Post") {
+        self.listing = listing
+        self.showPublish = showPublish
+        self.onSave = onSave
+        self.onPublish = onPublish
+        self.viewTitle = viewTitle
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                TBTheme.gradient.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 20) {
+
+                        // Basics
+                        sectionHeader("Basics")
+                        VStack(spacing: 12) {
+                            TextField("Give your job a title", text: $title)
+                                .textFieldStyle(TBTextFieldStyle())
+                            TextField("Describe the work", text: $description, axis: .vertical)
+                                .textFieldStyle(TBTextFieldStyle())
+                                .lineLimit(3...6)
+
+                            // Category picker (matches wizard)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Category")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(TBTheme.offWhiteSecondary)
+                                NavigationLink {
+                                    // Direct binding ensures we only mutate category, not replace the whole listing.
+                                    TradeTypeSelectionView(selection: $category)
+                                } label: {
+                                    HStack {
+                                        Text(category?.displayName ?? "Select a category")
+                                            .foregroundStyle(category == nil ? TBTheme.offWhiteSecondary : TBTheme.offWhite)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    }
+                                    .padding()
+                                    .background(Color.black.opacity(0.2))
+                                    .cornerRadius(12)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Photos
+                        sectionHeader("Photos")
+                        VStack(spacing: 12) {
+                            HStack {
+                                addPhotosButton
+                                Spacer()
+                            }
+
+                            if isAddingPhotos {
+                                HStack(spacing: 8) {
+                                    ProgressView().tint(TBTheme.brand)
+                                    Text("Adding photos…")
+                                        .foregroundStyle(TBTheme.offWhiteSecondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
+                            if let photoAddError {
+                                Text(photoAddError)
+                                    .font(.footnote)
+                                    .foregroundStyle(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
+                            if !photos.isEmpty {
+                                let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+                                LazyVGrid(columns: columns, spacing: 10) {
+                                    ForEach(photos, id: \.self) { url in
+                                        ZStack(alignment: .topTrailing) {
+                                            thumbnailView(for: url)
+                                                .frame(height: 90)
+                                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                        .stroke(TBTheme.offWhite.opacity(0.15), lineWidth: 1)
+                                                )
+
+                                            Button {
+                                                removePhoto(url)
+                                            } label: {
+                                                Image(systemName: "xmark")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .foregroundStyle(.white)
+                                                    .padding(6)
+                                                    .background(Circle().fill(Color.black.opacity(0.55)))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(6)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("Add photos to help pros understand the job.")
+                                    .font(.footnote)
+                                    .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Location
+                        sectionHeader("Location")
+                        VStack(spacing: 12) {
+                            TextField("Address line 1 (optional)", text: $line1)
+                                .textFieldStyle(TBTextFieldStyle())
+                                .onChange(of: line1) { _ in scheduleGeocode() }
+
+                            TextField("City", text: $city)
+                                .textFieldStyle(TBTextFieldStyle())
+                                .onChange(of: city) { _ in scheduleGeocode() }
+
+                            TextField("Postcode", text: $postcode)
+                                .textFieldStyle(TBTextFieldStyle())
+                                .textInputAutocapitalization(.characters)
+                                .onChange(of: postcode) { _ in scheduleGeocode() }
+
+                            // Map preview
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Map(position: .constant(.region(region)), interactionModes: [.zoom, .pan]) {
+                                        if let coord = locatedCoordinate {
+                                            Annotation("",
+                                                       coordinate: coord) {
+                                                ZStack {
+                                                    Circle().fill(TBTheme.brand).frame(width: 14, height: 14)
+                                                    Circle().stroke(Color.white, lineWidth: 2).frame(width: 18, height: 18)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .frame(height: 180)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(TBTheme.offWhite.opacity(0.25), lineWidth: 1)
+                                    )
+
+                                    if isGeocoding {
+                                        ProgressView().tint(TBTheme.offWhite)
+                                    }
+                                }
+
+                                if let geocodeError {
+                                    Text(geocodeError)
+                                        .font(.footnote)
+                                        .foregroundStyle(TBTheme.offWhiteSecondary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Budget
+                        sectionHeader("Costs")
+                        VStack(spacing: 12) {
+                            Picker("Budget type", selection: $budgetType) {
+                                ForEach(JobBudgetType.uiOrder) { t in
+                                    Text(t.displayName).tag(t)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            // Currency dropdown (matches wizard)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Currency")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(TBTheme.offWhiteSecondary)
+
+                                Menu {
+                                    Picker("Currency", selection: $currency) {
+                                        ForEach(CurrencyCatalog.all) { opt in
+                                            Text("\(opt.code) – \(opt.localizedName)")
+                                                .tag(opt.code)
+                                        }
+                                    }
+                                } label: {
+                                    HStack {
+                                        let sym = CurrencyCatalog.symbol(for: currency)
+                                        Text("\(currency)  \(sym)")
+                                            .foregroundStyle(TBTheme.offWhite)
+                                        Spacer()
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    }
+                                    .padding()
+                                    .background(Color.black.opacity(0.2))
+                                    .cornerRadius(12)
+                                }
+                            }
+
+                            switch budgetType {
+                            case .quote:
+                                Text("Tradespeople will provide a quote.")
+                                    .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                            case .fixed, .hourly:
+                                CurrencyAmountField(title: "Amount",
+                                                    value: Binding(get: { budgetMin ?? 0 }, set: { budgetMin = $0 }),
+                                                    currencyCode: currency)
+
+                            case .range:
+                                CurrencyAmountField(title: "Min",
+                                                    value: Binding(get: { budgetMin ?? 0 }, set: { budgetMin = $0 }),
+                                                    currencyCode: currency)
+                                CurrencyAmountField(title: "Max",
+                                                    value: Binding(get: { budgetMax ?? 0 }, set: { budgetMax = $0 }),
+                                                    currencyCode: currency)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Timing
+                        sectionHeader("Timing")
+                        VStack(spacing: 12) {
+                            Toggle("Urgent", isOn: $isUrgent)
+                                .tint(TBTheme.brand)
+
+                            DatePicker("Preferred start date", selection: Binding(
+                                get: { startDate ?? Date() },
+                                set: { startDate = $0 }
+                            ), displayedComponents: [.date])
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Post it! pill button (posting flow only)
+                        if showPublish {
+                            HStack {
+                                Button(action: postItTapped) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "paperplane.fill")
+                                        Text("Post it!")
+                                            .fontWeight(.bold)
+                                    }
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        Capsule()
+                                            .fill(TBTheme.brand)
+                                            .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 6)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canSave)
+                                .opacity(canSave ? 1 : 0.6)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 20)
+                        }
+
+                        // Bottom spacing
+                        Spacer().frame(height: 16)
+                    }
+                }
+                // Make sure the scroll view doesn’t reveal default materials behind lists on some OS versions
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle(viewTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            // Keep toolbar visible but hide its background to avoid the grey bar
+            .toolbar(.visible, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .bottomBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                // Remove explicit Cancel; rely on native back chevron
+                ToolbarItem(placement: .confirmationAction) {
+                    if showPublish {
+                        Menu {
+                            Button("Save as Draft") {
+                                let updated = buildUpdatedListing(statusOverride: .draft)
+                                onSave(updated)
+                                dismiss()
+                            }
+                            Button("Publish") {
+                                let updated = buildUpdatedListing(statusOverride: .active)
+                                onPublish(updated)
+                                dismiss()
+                            }
+                        } label: {
+                            Text("Save")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(canSave ? TBTheme.brand : TBTheme.offWhiteSecondary)
+                        }
+                        .disabled(!canSave)
+                    } else {
+                        Button("Save") {
+                            let updated = buildUpdatedListing()
+                            onSave(updated)
+                            dismiss()
+                        }
+                        .disabled(!canSave)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if !didHydrateOnce {
+                hydrateFromListing()
+                didHydrateOnce = true
+                // Kick an initial geocode for the current address
+                scheduleGeocode()
+            }
+            // Keyboard visibility (we keep this to adjust layout if you want to react elsewhere)
+            keyboardObserver.start { visible in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isKeyboardVisible = visible
+                }
+            }
+        }
+        .onDisappear {
+            cancelGeocoding()
+            keyboardObserver.stop()
+        }
+        // Handle PhotosPicker results
+        .onChange(of: photoPickerItems) { _, newItems in
+            guard !newItems.isEmpty else { return }
+            Task { await importPickedPhotos(newItems) }
+        }
+    }
+
+    // MARK: - Section header
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(TBTheme.offWhiteSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+    }
+
+    // MARK: - Hydration / Build
+
+    private func hydrateFromListing() {
+        title = listing.title
+        description = listing.description
+        category = listing.category
+        line1 = listing.location.line1
+        city = listing.location.city
+        postcode = listing.location.postcode
+        budgetType = listing.budgetType
+        budgetMin = listing.budgetMin
+        budgetMax = listing.budgetMax
+        currency = listing.currency
+        startDate = listing.startDate
+        isUrgent = listing.isUrgent
+        photos = listing.photos
+    }
+
+    private func buildUpdatedListing(statusOverride: JobListingStatus? = nil) -> JobListing {
+        var updated = listing
+        updated.title = title
+        updated.description = description
+        updated.category = category
+        updated.location = Address(line1: line1, city: city, postcode: postcode)
+        updated.budgetType = budgetType
+        updated.budgetMin = budgetMin
+        updated.budgetMax = budgetMax
+        updated.currency = currency
+        updated.startDate = startDate
+        updated.isUrgent = isUrgent
+        updated.photos = photos
+        if let statusOverride { updated.status = statusOverride }
+        return updated
+    }
+
+    // MARK: - Photos
+
+    private var addPhotosButton: some View {
+        PhotosPicker(
+            selection: $photoPickerItems,
+            maxSelectionCount: 12,
+            matching: .images,
+            photoLibrary: .shared()
+        ) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(TBTheme.brand.opacity(0.2))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "plus")
+                        .foregroundStyle(TBTheme.brand)
+                        .font(.system(size: 14, weight: .bold))
+                }
+                Text("Add Photos")
+                    .font(.headline)
+                    .foregroundStyle(TBTheme.brand)
+                if isAddingPhotos {
+                    ProgressView().tint(TBTheme.brand)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.black.opacity(0.20))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(TBTheme.offWhite.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isAddingPhotos)
+        .accessibilityLabel("Add photos")
+    }
+
+    private func thumbnailView(for url: URL) -> some View {
+        Group {
+            if let img = PhotoService.shared.thumbnail(for: url, targetSize: CGSize(width: 200, height: 200)) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+            } else if let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Color.white.opacity(0.08)
+                    Image(systemName: "photo")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func removePhoto(_ url: URL) {
+        // Remove from UI list immediately
+        photos.removeAll { $0 == url }
+        // Best-effort delete the file (optional; comment out if you want to keep files referenced elsewhere)
+        PhotoService.shared.delete(url)
+    }
+
+    private func importPickedPhotos(_ items: [PhotosPickerItem]) async {
+        photoAddError = nil
+        isAddingPhotos = true
+        defer { isAddingPhotos = false }
+
+        var newURLs: [URL] = []
+        for item in items {
+            do {
+                if let data = try await item.loadTransferable(type: Data.self) {
+                    if let url = await PhotoService.shared.save(data) {
+                        newURLs.append(url)
+                    }
+                }
+            } catch {
+                // Ignore individual item errors; collect a generic message
+                photoAddError = "Some photos couldn’t be added."
+            }
+        }
+        if !newURLs.isEmpty {
+            // Append and ensure uniqueness
+            let combined = photos + newURLs
+            // Deduplicate by file path
+            var seen: Set<String> = []
+            photos = combined.filter { url in
+                let key = url.path
+                if seen.contains(key) { return false }
+                seen.insert(key)
+                return true
+            }
+        }
+        // Clear selection binding
+        await MainActor.run {
+            photoPickerItems = []
+        }
+    }
+
+    private func postItTapped() {
+        guard canSave else { return }
+        let updated = buildUpdatedListing(statusOverride: .active)
+        onPublish(updated)
+        dismiss()
+    }
+}
+
+// MARK: - CurrencyAmountField (identical styling to wizard)
+
+private struct CurrencyAmountField: View {
+    let title: String
+    @Binding var value: Decimal
+    var currencyCode: String
+
+    @State private var text: String = ""
+    // Keep a plain formatter for Decimal -> String to avoid locale surprises
+    private let numberFormatter: NumberFormatter = {
+        let nf = NumberFormatter()
+        nf.numberStyle = .decimal
+        nf.maximumFractionDigits = 2
+        nf.minimumFractionDigits = 0
+        nf.usesGroupingSeparator = false
+        return nf
+    }()
+
+    private var symbol: String { CurrencyCatalog.symbol(for: currencyCode) }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(symbol)
+                .font(.headline)
+                .foregroundStyle(TBTheme.offWhite)
+            TextField(title, text: Binding(
+                get: { text },
+                set: { newText in
+                    let cleaned = newText
+                        .replacingOccurrences(of: symbol, with: "")
+                        .replacingOccurrences(of: " ", with: "")
+                    text = cleaned
+                    if let dec = Decimal(string: cleaned) {
+                        value = dec
+                    }
+                }
+            ))
+            .keyboardType(.decimalPad)
+            .foregroundStyle(TBTheme.offWhite)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.2))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(TBTheme.offWhite.opacity(0.25), lineWidth: 1)
+        )
+        // Initialize and keep text in sync when external inputs change
+        .onAppear { syncTextFromValue() }
+        .onChange(of: value) { _, _ in syncTextFromValueIfNeeded() }
+        .onChange(of: currencyCode) { _, _ in
+            // Keep raw numeric text; symbol is separate label.
+            syncTextFromValueIfNeeded()
+        }
+    }
+
+    private func syncTextFromValue() {
+        if let s = numberFormatter.string(from: value as NSDecimalNumber) {
+            text = s
+        } else {
+            // Fallback to plain NSNumber formatting
+            let ns = value as NSNumber
+            text = ns.stringValue
+        }
+    }
+
+    private func syncTextFromValueIfNeeded() {
+        // Only update if the current text does not parse to the same Decimal.
+        if let current = Decimal(string: text) {
+            if current != value {
+                syncTextFromValue()
+            }
+        } else {
+            syncTextFromValue()
+        }
+    }
+}
+
+// MARK: - Geocoding helpers (ported from JobPostingWizard)
+
+private extension JobListingEditorSheet {
+    func scheduleGeocode() {
+        cancelGeocoding()
+
+        let query = buildPostalAddressString()
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            geocodeError = nil
+            locatedCoordinate = nil
+            return
+        }
+
+        let token = UUID()
+        geocodeRequestID = token
+
+        geocodeTask = Task { @MainActor in
+            guard !Task.isCancelled, geocodeRequestID == token else { return }
+            isGeocoding = true
+            geocodeError = nil
+
+            // Debounce ~400ms
+            do { try await Task.sleep(nanoseconds: 400_000_000) } catch { }
+
+            guard !Task.isCancelled, geocodeRequestID == token else { return }
+            await geocodeCurrentAddress(for: token)
+
+            guard !Task.isCancelled, geocodeRequestID == token else { return }
+            isGeocoding = false
+        }
+    }
+
+    func cancelGeocoding() {
+        geocodeTask?.cancel()
+        geocodeTask = nil
+        geocodeRequestID = nil
+        isGeocoding = false
+    }
+
+    func buildPostalAddressString() -> String {
+        let parts = [line1, city, postcode]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.joined(separator: ", ")
+    }
+
+    @MainActor
+    func geocodeCurrentAddress(for token: UUID) async {
+        guard !Task.isCancelled, geocodeRequestID == token else { return }
+
+        let query = buildPostalAddressString()
+        guard !query.isEmpty else { return }
+
+        let geocoder = CLGeocoder()
+
+        do {
+            let placemarks = try await geocoder.geocodeAddressString(query, in: nil)
+
+            guard !Task.isCancelled, geocodeRequestID == token else { return }
+
+            guard let first = placemarks.first, let loc = first.location else {
+                geocodeError = "We couldn’t find this address yet."
+                locatedCoordinate = nil
+                return
+            }
+            let coord = loc.coordinate
+            locatedCoordinate = coord
+            withAnimation(.easeInOut) {
+                region = MKCoordinateRegion(center: coord,
+                                            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
+            }
+        } catch is CancellationError {
+            // ignored
+        } catch {
+            guard !Task.isCancelled, geocodeRequestID == token else { return }
+            geocodeError = "Address lookup failed. Please refine it."
+            locatedCoordinate = nil
+        }
+    }
+}
