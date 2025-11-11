@@ -566,6 +566,8 @@ final class AppState {
             if let ckStore = cloudProfileStore as? CloudKitProfileStore {
                 try? await ckStore.updateAvatarAsset(from: fileURL, identity: identity)
             }
+            // NEW: Also upsert profile fields so the record is updated alongside the asset
+            try? await cloudProfileStore.saveProfile(self.profile, identity: identity)
             // Public profile mirror (so others can see it)
             try? await publicProfileStore?.updateAvatar(from: fileURL, identity: identity)
 
@@ -582,10 +584,31 @@ final class AppState {
 
     // MARK: - Sign out
 
+    // Helper: persist the current profile both locally and to CloudKit (best-effort)
+    private func flushProfileEditsBeforeSignOut() async {
+        // Always write the local identity-scoped file first
+        savePersistedProfile()
+
+        // If authenticated, push to CloudKit best-effort so next sign-in sees latest
+        if let id = currentAuthIdentity() {
+            do {
+                try await cloudProfileStore.saveProfile(self.profile, identity: id)
+            } catch {
+                // Best-effort: ignore failures so sign-out continues
+            }
+        }
+    }
+
     @MainActor
     func signOut() {
         // Stop any listeners tied to the authenticated identity
         self.stopMessagingListeners()
+
+        // Flush current profile edits (local + remote) before resetting in-memory state.
+        // Do this off the main actor to avoid blocking UI.
+        Task {
+            await self.flushProfileEditsBeforeSignOut()
+        }
 
         // Reset authentication and identity-scoped state
         self.isAuthenticated = false
@@ -759,6 +782,9 @@ protocol CloudProfileStore {
 
     // NEW: resolve a cloud identity from a posterAppID (if supported by backend)
     func identity(forAppID appID: UUID) async throws -> String?
+
+    // New: save profile fields to CloudKit (used by sign-out flush)
+    func saveProfile(_ profile: AppState.UserProfile, identity: String) async throws
 }
 
 actor DefaultCloudProfileStore: CloudProfileStore {
@@ -773,5 +799,9 @@ actor DefaultCloudProfileStore: CloudProfileStore {
 
     // Default no-op: backends that don't support appID->identity mapping return nil
     func identity(forAppID appID: UUID) async throws -> String? { nil }
-}
 
+    func saveProfile(_ profile: AppState.UserProfile, identity: String) async throws {
+        _ = (profile, identity)
+        // No-op in default stub
+    }
+}

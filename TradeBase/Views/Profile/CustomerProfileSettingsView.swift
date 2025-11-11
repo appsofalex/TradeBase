@@ -77,10 +77,16 @@ struct CustomerProfileSettingsView: View {
         state.profile.bio = trimmedBio
 
         // Ensure no legacy tradesperson-only fields get modified from this screen.
-        // (We intentionally do not touch tradeTypes or skills.)
         state.profile.username = nil
 
+        // 1) Save locally
         state.saveProfile()
+
+        // 2) Upsert to CloudKit so changes persist across sign-out/sign-in
+        if let id = state.currentAuthIdentity() {
+            try? await state.cloudProfileStore.saveProfile(state.profile, identity: id)
+        }
+
         dismiss()
     }
 }

@@ -87,21 +87,27 @@ struct PublicTradesProfileView: View {
                     }
 
                     if let main = profile?.mainSkills, !main.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .center, spacing: 8) {
                             Text("Main Skills")
                                 .font(.headline)
                                 .foregroundStyle(.white.opacity(0.95))
-                            SkillsChips(skills: main, tint: TBTheme.brand)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            SkillsChips(skills: main, tint: TBTheme.brand, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .center)
                         }
+                        .frame(maxWidth: .infinity)
                     }
 
                     if let sub = profile?.subSkills, !sub.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .center, spacing: 8) {
                             Text("Other Skills")
                                 .font(.headline)
                                 .foregroundStyle(.white.opacity(0.95))
-                            SkillsChips(skills: sub, tint: TBTheme.brandMuted)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            SkillsChips(skills: sub, tint: TBTheme.brandMuted, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .center)
                         }
+                        .frame(maxWidth: .infinity)
                     }
 
                     VStack(spacing: 12) {
@@ -250,13 +256,17 @@ struct PublicTradesProfileView: View {
     }
 }
 
-// Helpers (unchanged)
+// Shared alignment mode for chips across this file
+private enum AlignmentMode { case leading, center }
+
+// Helpers (unchanged except for alignment support)
 private struct SkillsChips: View {
     var skills: [String]
     var tint: Color
+    var alignment: AlignmentMode = .leading
 
     var body: some View {
-        FlexibleChips(items: skills) { text in
+        FlexibleChips(items: skills, alignment: alignment) { text in
             Text(text)
                 .font(.caption.weight(.semibold))
                 .padding(.vertical, 6)
@@ -274,6 +284,7 @@ private struct SkillsChips: View {
 
 private struct FlexibleChips<Content: View>: View {
     let items: [String]
+    let alignment: AlignmentMode
     let content: (String) -> Content
 
     @State private var totalHeight: CGFloat = .zero
@@ -290,32 +301,76 @@ private struct FlexibleChips<Content: View>: View {
     private func generateContent(in g: GeometryProxy) -> some View {
         var width: CGFloat = 0
         var height: CGFloat = 0
-        return ZStack(alignment: .topLeading) {
-            ForEach(items, id: \.self) { item in
-                content(item)
-                    .alignmentGuide(.leading) { d in
-                        if (abs(width - d.width) > g.size.width) {
-                            width = 0
-                            height -= d.height
+
+        // For centered layout we’ll compute the line breaks first, then center each line.
+        if alignment == .center {
+            let lines = buildLines(maxWidth: g.size.width)
+            return AnyView(
+                VStack(alignment: .center, spacing: 8) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                        HStack(spacing: 8) {
+                            ForEach(line, id: \.self) { item in
+                                content(item)
+                            }
                         }
-                        let result = width
-                        if item == items.last! {
-                            width = 0
-                        } else {
-                            width -= d.width
-                        }
-                        return result
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .alignmentGuide(.top) { _ in
-                        let result = height
-                        if item == items.last! {
-                            height = 0
+                }
+                .background(viewHeightReader($totalHeight))
+            )
+        }
+
+        // Leading (original) layout
+        return AnyView(
+            ZStack(alignment: .topLeading) {
+                ForEach(items, id: \.self) { item in
+                    content(item)
+                        .alignmentGuide(.leading) { d in
+                            if (abs(width - d.width) > g.size.width) {
+                                width = 0
+                                height -= d.height
+                            }
+                            let result = width
+                            if item == items.last! {
+                                width = 0
+                            } else {
+                                width -= d.width
+                            }
+                            return result
                         }
-                        return result
-                    }
+                        .alignmentGuide(.top) { _ in
+                            let result = height
+                            if item == items.last! {
+                                height = 0
+                            }
+                            return result
+                        }
+                }
+            }
+            .background(viewHeightReader($totalHeight))
+        )
+    }
+
+    // Break items into lines that fit the given width, measuring roughly using an intrinsic size host.
+    private func buildLines(maxWidth: CGFloat) -> [[String]] {
+        var lines: [[String]] = [[]]
+        var currentWidth: CGFloat = 0
+        let spacing: CGFloat = 8
+
+        for item in items {
+            // Measure the chip quickly by hosting it off-screen
+            let size = HostingSizeCalculator.size(for: content(item))
+            let chipWidth = size.width
+
+            if currentWidth == 0 || currentWidth + chipWidth + spacing <= maxWidth {
+                lines[lines.count - 1].append(item)
+                currentWidth = (currentWidth == 0 ? chipWidth : currentWidth + spacing + chipWidth)
+            } else {
+                lines.append([item])
+                currentWidth = chipWidth
             }
         }
-        .background(viewHeightReader($totalHeight))
+        return lines
     }
 
     private func viewHeightReader(_ binding: Binding<CGFloat>) -> some View {
@@ -325,6 +380,15 @@ private struct FlexibleChips<Content: View>: View {
             }
             return Color.clear
         }
+    }
+}
+
+// Utility to measure a SwiftUI view’s intrinsic size
+private enum HostingSizeCalculator {
+    static func size<V: View>(for view: V) -> CGSize {
+        let controller = UIHostingController(rootView: view)
+        let size = controller.sizeThatFits(in: UIView.layoutFittingCompressedSize)
+        return size
     }
 }
 
