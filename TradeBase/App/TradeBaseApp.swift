@@ -16,6 +16,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { }
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { }
+    
+    struct TradeBaseApp: App {
+      var body: some Scene {
+        WindowGroup {
+          RootView()
+            .preferredColorScheme(.dark)
+        }
+      }
+    }
 
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable : Any],
