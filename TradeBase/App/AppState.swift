@@ -26,12 +26,23 @@ final class AppState {
 
     // Auth
     enum AuthProvider: String, Codable { case apple, google, email, guest, x, none }
-    var authProvider: AuthProvider = .none
-    var authEmail: String? = nil
+
+    // Backed by persistence (see keys below)
+    var authProvider: AuthProvider = .none {
+        didSet {
+            defaults.set(authProvider.rawValue, forKey: authProviderKey)
+        }
+    }
+    var authEmail: String? = nil {
+        didSet {
+            defaults.set(authEmail, forKey: authEmailKey)
+        }
+    }
 
     // When auth flips to false, force role to nil so RootView shows RolePickerView.
     var isAuthenticated: Bool = false {
         didSet {
+            defaults.set(isAuthenticated, forKey: isAuthenticatedKey)
             if isAuthenticated == false {
                 // Ensure we never route into unauthenticated onboarding for a pre-selected role
                 selectedRole = nil
@@ -50,7 +61,15 @@ final class AppState {
     }
 
     // Selected role for UI
-    var selectedRole: Role? = nil
+    var selectedRole: Role? = nil {
+        didSet {
+            if let r = selectedRole {
+                defaults.set(r.rawValue, forKey: selectedRoleKey)
+            } else {
+                defaults.removeObject(forKey: selectedRoleKey)
+            }
+        }
+    }
 
     // Marketplace filter used by LeadsView / FilterSheet
     var marketFilter: MarketFilter = MarketFilter()
@@ -167,6 +186,12 @@ final class AppState {
     // New: keys for onboarding-completed persistence
     private let customerOnboardingCompletedKey = "onboarding.customer.completed"
     private let tradespersonOnboardingCompletedKey = "onboarding.tradesperson.completed"
+
+    // New: keys for auth/session persistence
+    private let authProviderKey = "auth.provider"
+    private let authEmailKey = "auth.email"
+    private let isAuthenticatedKey = "auth.isAuthenticated"
+    private let selectedRoleKey = "auth.selectedRole"
 
     var notificationsEnabled: Bool = false {
         didSet { defaults.set(notificationsEnabled, forKey: notificationsEnabledKey) }
@@ -316,6 +341,9 @@ final class AppState {
         self.registeredCustomerAccounts = Set(cust)
         self.registeredTradespersonAccounts = Set(trad)
 
+        // Restore persisted auth/session state first so RootView routes correctly on cold launch.
+        restoreAuthStateFromDefaults()
+
         // Ensure identity-scoped local profile is present for current identity
         loadPersistedProfile()
 
@@ -342,6 +370,82 @@ final class AppState {
             self.tradespersonOnboardingCompleted = defaults.bool(forKey: tradespersonOnboardingCompletedKey)
         } else {
             self.tradespersonOnboardingCompleted = false
+        }
+
+        // Attempt silent provider session restoration in background (non-blocking).
+        Task.detached { [weak self] in
+            await self?.attemptSilentProviderRestoration()
+        }
+    }
+
+    // MARK: - Auth restoration
+
+    private func restoreAuthStateFromDefaults() {
+        // Provider/email
+        if let raw = defaults.string(forKey: authProviderKey),
+           let prov = AuthProvider(rawValue: raw) {
+            self.authProvider = prov
+        } else {
+            self.authProvider = .none
+        }
+        self.authEmail = defaults.string(forKey: authEmailKey)
+
+        // Role
+        if let rawRole = defaults.string(forKey: selectedRoleKey),
+           let role = Role(rawValue: rawRole) {
+            self.selectedRole = role
+        } else {
+            self.selectedRole = nil
+        }
+
+        // Decide authenticated optimistically if we have a coherent identity for the provider.
+        // This ensures RootView goes straight to the correct portal on cold launch.
+        let hasIdentity: Bool = {
+            switch authProvider {
+            case .apple:
+                if let s = UserDefaults.standard.string(forKey: "apple_user_id"), !s.isEmpty { return true }
+                return false
+            case .google:
+                if let s = UserDefaults.standard.string(forKey: "google_user_id"), !s.isEmpty { return true }
+                return false
+            case .email:
+                if let email = authEmail, !email.isEmpty { return true }
+                return false
+            case .guest:
+                return true
+            case .x, .none:
+                return false
+            }
+        }()
+        // If previous session was marked authenticated and identity exists, keep it; otherwise derive from identity presence.
+        if defaults.object(forKey: isAuthenticatedKey) != nil {
+            let stored = defaults.bool(forKey: isAuthenticatedKey)
+            self.isAuthenticated = stored && hasIdentity
+        } else {
+            self.isAuthenticated = hasIdentity
+        }
+    }
+
+    private func attemptSilentProviderRestoration() async {
+        switch authProvider {
+        case .google:
+            // Best-effort: restore previous Google session so tokens are refreshed.
+            _ = try? await GIDSignIn.sharedInstance.restorePreviousSignIn()
+        case .apple:
+            // Check Apple credential state; if revoked, sign out.
+            if let userID = UserDefaults.standard.string(forKey: "apple_user_id"), !userID.isEmpty {
+                let provider = ASAuthorizationAppleIDProvider()
+                do {
+                    let state = try await provider.credentialState(forUserID: userID)
+                    if state != .authorized {
+                        await MainActor.run { self.signOut() }
+                    }
+                } catch {
+                    // Ignore errors; keep optimistic state
+                }
+            }
+        case .email, .guest, .x, .none:
+            break
         }
     }
 

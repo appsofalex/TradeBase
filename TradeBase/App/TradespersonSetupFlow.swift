@@ -11,6 +11,7 @@ struct TradespersonSetupFlow: View {
     @State private var primaryTrade: TradeType = .electrician
     @State private var selectedSkills: Set<String> = []
     @State private var newSkill: String = ""
+    @State private var hasAvatar: Bool = false
 
     // Direction for step-to-step animations
     @State private var stepDirection: AppState.NavDirection = .forward
@@ -33,6 +34,8 @@ struct TradespersonSetupFlow: View {
             return true // skills optional
         case 3:
             return true // bio optional
+        case 4:
+            return hasAvatar // avatar required
         default:
             return false
         }
@@ -57,9 +60,9 @@ struct TradespersonSetupFlow: View {
         ZStack {
             TBTheme.gradient.ignoresSafeArea()
             VStack(spacing: 20) {
-                // Step dots
+                // Step dots (5 steps)
                 HStack(spacing: 6) {
-                    ForEach(0..<4, id: \.self) { idx in
+                    ForEach(0..<5, id: \.self) { idx in
                         Circle()
                             .fill(idx <= step ? TBTheme.brand : Color.white.opacity(0.25))
                             .frame(width: 8, height: 8)
@@ -77,13 +80,14 @@ struct TradespersonSetupFlow: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
 
-                // Only render the active step view to avoid hit-testing issues
+                // Only render the active step view
                 Group {
                     switch step {
                     case 0: nameStep
                     case 1: tradeStep
-                    case 2: skillsStep // now a Form matching settings
+                    case 2: skillsStep
                     case 3: bioStep
+                    case 4: avatarStep
                     default: EmptyView()
                     }
                 }
@@ -100,19 +104,19 @@ struct TradespersonSetupFlow: View {
                             withAnimation(.easeInOut(duration: 0.28)) { step -= 1 }
                         }
                     }
-                    PillButton(title: step == 3 ? "Finish" : "Continue", style: .brand) {
+                    PillButton(title: step == 4 ? "Finish" : "Continue", style: .brand) {
                         Task { await continueTapped() }
                     }
                     .disabled(!canContinue)
                     .opacity(canContinue ? 1 : 0.6)
-                    .zIndex(2) // keep above any scrollable content
+                    .zIndex(2)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
             }
         }
         .onAppear {
-            // Prefill from any existing profile data — but avoid seeding generic placeholder text.
+            // Prefill from any existing profile data — but avoid generic placeholder.
             let existing = state.profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
             let isGenericPlaceholder = existing.caseInsensitiveCompare("Your Name") == .orderedSame
             name = isGenericPlaceholder ? "" : existing
@@ -120,6 +124,7 @@ struct TradespersonSetupFlow: View {
             bio = state.profile.bio
             primaryTrade = state.profile.tradeTypes.first ?? .electrician
             selectedSkills = Set(state.profile.skills)
+            hasAvatar = currentHasAvatar()
         }
         .interactiveDismissDisabled(true)
         .navigationBarTitleDisplayMode(.inline)
@@ -135,6 +140,9 @@ struct TradespersonSetupFlow: View {
                 .accessibilityLabel("Close")
             }
         }
+        .onChange(of: state.profile.avatarURL) { _, _ in
+            hasAvatar = currentHasAvatar()
+        }
     }
 
     // MARK: - Steps
@@ -143,7 +151,7 @@ struct TradespersonSetupFlow: View {
         VStack(spacing: 16) {
             PillTextField(
                 systemImage: "person",
-                placeholder: "Your name", // placeholder shown in gray until user types
+                placeholder: "Your name",
                 text: $name
             )
             .textInputAutocapitalization(.words)
@@ -189,7 +197,6 @@ struct TradespersonSetupFlow: View {
         }
     }
 
-    // Uniform with the Settings editor: use a Form with Sections and Toggles
     private var skillsStep: some View {
         Form {
             Section {
@@ -252,7 +259,7 @@ struct TradespersonSetupFlow: View {
         .onChange(of: primaryTrade) { _, _ in
             // Keep custom skills; recommended selection persists
         }
-        .padding(.top, -8) // tighten to header like settings
+        .padding(.top, -8)
     }
 
     private var bioStep: some View {
@@ -284,6 +291,10 @@ struct TradespersonSetupFlow: View {
         }
     }
 
+    private var avatarStep: some View {
+        AvatarSetupStep(hasAvatar: $hasAvatar)
+    }
+
     // MARK: - Titles
 
     private var titleForStep: String {
@@ -292,6 +303,7 @@ struct TradespersonSetupFlow: View {
         case 1: return "Your main trade"
         case 2: return "Your skills"
         case 3: return "Your bio"
+        case 4: return "Add your photo"
         default: return ""
         }
     }
@@ -302,12 +314,12 @@ struct TradespersonSetupFlow: View {
         case 1: return "Pick the trade you primarily work in."
         case 2: return "Choose services you offer. Add your own if needed."
         case 3: return "Add a short intro to help customers get to know you."
+        case 4: return "Add a clear profile photo. You can change it later."
         default: return ""
         }
     }
 
     private var horizontalPaddingForStep: CGFloat {
-        // Forms manage their own insets; keep others padded like before
         step == 2 ? 0 : 24
     }
 
@@ -336,16 +348,27 @@ struct TradespersonSetupFlow: View {
 
     private func continueTapped() async {
         switch step {
-        case 0, 1, 2:
+        case 0, 1, 2, 3:
             await MainActor.run {
                 stepDirection = .forward
                 withAnimation(.easeInOut(duration: 0.28)) { step += 1 }
             }
-        case 3:
+        case 4:
+            guard hasAvatar else { return }
             await MainActor.run { finish() }
         default:
             break
         }
+    }
+
+    // MARK: - Avatar presence
+
+    private func currentHasAvatar() -> Bool {
+        guard let url = state.profile.avatarURL else { return false }
+        if url.isFileURL {
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+        return true
     }
 }
 

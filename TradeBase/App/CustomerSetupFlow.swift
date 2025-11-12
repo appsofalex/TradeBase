@@ -9,6 +9,7 @@ struct CustomerSetupFlow: View {
     @State private var name: String = ""
     @State private var city: String = ""
     @State private var bio: String = ""
+    @State private var hasAvatar: Bool = false
 
     // Direction for step-to-step animations
     @State private var stepDirection: AppState.NavDirection = .forward
@@ -22,6 +23,9 @@ struct CustomerSetupFlow: View {
             return !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case 2:
             return true // bio optional
+        case 3:
+            // Avatar is required on final step
+            return hasAvatar
         default:
             return false
         }
@@ -47,7 +51,7 @@ struct CustomerSetupFlow: View {
             TBTheme.gradient.ignoresSafeArea()
             VStack(spacing: 20) {
                 HStack(spacing: 6) {
-                    ForEach(0..<3, id: \.self) { idx in
+                    ForEach(0..<4, id: \.self) { idx in
                         Circle()
                             .fill(idx <= step ? TBTheme.brand : Color.white.opacity(0.25))
                             .frame(width: 8, height: 8)
@@ -81,6 +85,11 @@ struct CustomerSetupFlow: View {
                             .transition(stepTransition)
                             .id(2)
                     }
+                    if step == 3 {
+                        avatarStep
+                            .transition(stepTransition)
+                            .id(3)
+                    }
                 }
                 .padding(.horizontal, 24)
                 .animation(.easeInOut(duration: 0.28), value: step)
@@ -94,7 +103,7 @@ struct CustomerSetupFlow: View {
                             withAnimation(.easeInOut(duration: 0.28)) { step -= 1 }
                         }
                     }
-                    PillButton(title: step == 2 ? "Finish" : "Continue", style: .brand) {
+                    PillButton(title: step == 3 ? "Finish" : "Continue", style: .brand) {
                         Task { await continueTapped() }
                     }
                     .disabled(!canContinue)
@@ -108,6 +117,7 @@ struct CustomerSetupFlow: View {
             name = ""
             city = state.profile.city ?? ""
             bio = ""
+            hasAvatar = currentHasAvatar()
         }
         .interactiveDismissDisabled(true)
         .navigationBarTitleDisplayMode(.inline)
@@ -122,6 +132,9 @@ struct CustomerSetupFlow: View {
                 }
                 .accessibilityLabel("Close")
             }
+        }
+        .onChange(of: state.profile.avatarURL) { _, _ in
+            hasAvatar = currentHasAvatar()
         }
     }
 
@@ -181,11 +194,16 @@ struct CustomerSetupFlow: View {
         }
     }
 
+    private var avatarStep: some View {
+        AvatarSetupStep(hasAvatar: $hasAvatar)
+    }
+
     private var titleForStep: String {
         switch step {
         case 0: return "Let’s set you up"
         case 1: return "Where are you?"
         case 2: return "Your bio"
+        case 3: return "Add your photo"
         default: return ""
         }
     }
@@ -195,6 +213,7 @@ struct CustomerSetupFlow: View {
         case 0: return "Tell us your name so pros know who they’re chatting with."
         case 1: return "Add your city to match with local tradespeople."
         case 2: return "Add a short intro to help pros get to know you."
+        case 3: return "Add a clear profile photo. You can change it later."
         default: return ""
         }
     }
@@ -209,9 +228,7 @@ struct CustomerSetupFlow: View {
         state.profile.name = trimmedName
         state.profile.city = trimmedCity.isEmpty ? nil : trimmedCity
         state.profile.bio = String(trimmedBio.prefix(80))
-
-        // Username no longer used for customers
-        state.profile.username = nil
+        state.profile.username = nil // usernames not used for customers
 
         state.saveProfile()
 
@@ -223,15 +240,27 @@ struct CustomerSetupFlow: View {
 
     private func continueTapped() async {
         switch step {
-        case 0, 1:
+        case 0, 1, 2:
             await MainActor.run {
                 stepDirection = .forward
                 withAnimation(.easeInOut(duration: 0.28)) { step += 1 }
             }
-        case 2:
+        case 3:
+            guard hasAvatar else { return }
             await MainActor.run { finish() }
         default:
             break
         }
     }
+
+    // MARK: - Avatar presence
+
+    private func currentHasAvatar() -> Bool {
+        guard let url = state.profile.avatarURL else { return false }
+        if url.isFileURL {
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+        return true
+    }
 }
+
