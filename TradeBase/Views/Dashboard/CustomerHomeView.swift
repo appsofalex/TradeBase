@@ -18,6 +18,13 @@ struct CustomerHomeView: View {
     // Phase 2: message hub
     @State private var showMessageHub = false
 
+    // Logo pill state
+    @State private var showWelcomePill = false
+    @State private var autoHideTask: Task<Void, Never>? = nil
+
+    // Target width for the expanded pill
+    private let pillExpandedWidth: CGFloat = 220
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -39,6 +46,45 @@ struct CustomerHomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                
+                // Centered (principal) logo that expands to a welcome pill
+                ToolbarItem(placement: .principal) {
+                    Button {
+                        toggleWelcomePill()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image("logowithoutbg")
+                                .renderingMode(.original)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(height: 24)
+
+                            // Animated-width pill (centered)
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    // Dark pill to match app’s navbar/dark blue look
+                                    .fill(Color.black.opacity(0.35))
+                                    .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
+                                Text("Welcome to TradeBase!")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 24)
+                            }
+                            .frame(width: showWelcomePill ? pillExpandedWidth : 0, height: 28)
+                            .clipped()
+                            .transition(.opacity)
+                        }
+                        .contentShape(Rectangle())
+                        // Ensure the whole thing stays centered in the principal area
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .animation(.spring(response: 0.28, dampingFraction: 0.9), value: showWelcomePill)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Welcome to TradeBase")
+                }
+
+                // Keep the bell on the right
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showMessageHub = true
@@ -49,8 +95,8 @@ struct CustomerHomeView: View {
                                     Circle()
                                         .fill(Color.red)
                                         .frame(width: 9, height: 9)
-                                        .padding(.top, -2)      // match DashboardView placement
-                                        .padding(.trailing, -4) // match DashboardView placement
+                                        .padding(.top, -2)
+                                        .padding(.trailing, -4)
                                         .zIndex(1)
                                         .accessibilityHidden(true)
                                 }
@@ -77,16 +123,11 @@ struct CustomerHomeView: View {
                             showPublish: true,
                             onSave: { updated in
                                 store.upsert(updated)
-                                // For drafts, schedule a reminder to finish later
                                 Task { await NotificationsScheduler.shared.scheduleDraftReminder(for: updated) }
                             },
                             onPublish: { updated in
-                                // Persist local fields first
                                 store.upsert(updated)
-                                // Change status to active locally
                                 store.publish(id: updated.id)
-
-                                // Mirror to CloudKit (best-effort)
                                 Task {
                                     let identity = state.currentAuthIdentity()
                                     let posterAppID = state.profile.id
@@ -105,8 +146,6 @@ struct CustomerHomeView: View {
                                         // best-effort
                                     }
                                 }
-
-                                // On publish, schedule a start reminder (if date present)
                                 Task {
                                     await state.requestNotificationPermissionsIfNeeded()
                                     await NotificationsScheduler.shared.scheduleStartReminder(for: updated)
@@ -117,7 +156,6 @@ struct CustomerHomeView: View {
                         .environment(\.customerJobListingStore, store)
                         .environment(\.appState, state)
                     } else {
-                        // Safety fallback if draft missing
                         Text("Preparing editor…")
                             .task { await prepareAndNavigateToDraft() }
                     }
@@ -139,7 +177,6 @@ struct CustomerHomeView: View {
         .onChange(of: state.authProvider) { _, _ in
             if state.canCustomerPostJobs && showAuthEntrySheet {
                 showAuthEntrySheet = false
-                // Defer navigation until the sheet fully dismisses
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     Task { await prepareAndNavigateToDraft() }
                 }
@@ -151,7 +188,6 @@ struct CustomerHomeView: View {
                 Task { await prepareAndNavigateToDraft() }
             }
         }) {
-            // Hide guest skip so only Apple/Google are offered for this gate.
             AuthEntryView(presentation: .gatedModal, hideGuestSkip: true)
         }
     }
@@ -167,7 +203,6 @@ struct CustomerHomeView: View {
                 .foregroundStyle(TBTheme.offWhiteSecondary)
 
             Button {
-                // Gate: Only Apple/Google signed-in accounts can post jobs.
                 if state.canCustomerPostJobs {
                     Task { await prepareAndNavigateToDraft() }
                 } else {
@@ -184,9 +219,7 @@ struct CustomerHomeView: View {
             .padding(.top, 6)
             .buttonStyle(.plain)
 
-            // Secondary quick action to jump to My Jobs
             Button {
-                // Coordinate navigation via AppState flags observed by MyJobsView
                 state.preferredMyJobsStatus = .active
                 state.navigateToMyJobsSignal += 1
             } label: {
@@ -207,7 +240,7 @@ struct CustomerHomeView: View {
             .padding(.top, 4)
         }
         .multilineTextAlignment(.center)
-        .frame(maxWidth: 420) // keep the block nicely centered on wider screens
+        .frame(maxWidth: 420)
     }
 
     private func tipRow(_ text: String) -> some View {
@@ -223,11 +256,28 @@ struct CustomerHomeView: View {
 
     @MainActor
     private func prepareAndNavigateToDraft() async {
-        // Create a new draft and navigate to the editor
         let owner = state.profile.id
-        // IMPORTANT: seed with an empty title so the editor shows its placeholder.
         let draft = store.createDraft(for: owner, title: "")
         newDraftID = draft.id
         shouldNavigateToPostJob = true
+    }
+
+    // MARK: - Logo pill behavior
+
+    private func toggleWelcomePill() {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+            showWelcomePill.toggle()
+        }
+        autoHideTask?.cancel()
+        if showWelcomePill {
+            autoHideTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                    showWelcomePill = false
+                }
+            }
+        } else {
+            autoHideTask = nil
+        }
     }
 }

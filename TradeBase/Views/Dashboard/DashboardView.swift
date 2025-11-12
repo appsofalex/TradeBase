@@ -18,6 +18,11 @@ struct DashboardView: View {
     // Phase 2: Navigation to message hub
     @State private var showMessageHub = false
 
+    // Logo pill state (mirrors CustomerHomeView)
+    @State private var showWelcomePill = false
+    @State private var autoHideTask: Task<Void, Never>? = nil
+    private let pillExpandedWidth: CGFloat = 220
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -36,6 +41,45 @@ struct DashboardView: View {
             // Hide the system nav title so only our header shows
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+
+                // Centered (principal) logo that expands to a welcome pill
+                ToolbarItem(placement: .principal) {
+                    Button {
+                        toggleWelcomePill()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image("logowithoutbg")
+                                .renderingMode(.original)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(height: 24)
+
+                            // Animated-width pill (centered)
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    // Dark pill to match app’s navbar/dark blue look
+                                    .fill(Color.black.opacity(0.35))
+                                    .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
+                                Text("Welcome to TradeBase!")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 24)
+                            }
+                            .frame(width: showWelcomePill ? pillExpandedWidth : 0, height: 28)
+                            .clipped()
+                            .transition(.opacity)
+                        }
+                        .contentShape(Rectangle())
+                        // Ensure the whole thing stays centered in the principal area
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .animation(.spring(response: 0.28, dampingFraction: 0.9), value: showWelcomePill)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Welcome to TradeBase")
+                }
+
+                // RIGHT-aligned bell
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showMessageHub = true
@@ -175,6 +219,25 @@ struct DashboardView: View {
         let interval = date.timeIntervalSinceReferenceDate
         if let url = URL(string: "calshow:\(interval)") {
             UIApplication.shared.open(url)
+        }
+    }
+
+    // MARK: - Logo pill behavior (same as CustomerHomeView)
+
+    private func toggleWelcomePill() {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+            showWelcomePill.toggle()
+        }
+        autoHideTask?.cancel()
+        if showWelcomePill {
+            autoHideTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                    showWelcomePill = false
+                }
+            }
+        } else {
+            autoHideTask = nil
         }
     }
 }
