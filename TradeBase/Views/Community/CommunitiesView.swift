@@ -440,19 +440,21 @@ private struct RelativeTimeText: View {
 private func relativeElapsedString(since date: Date, now: Date = Date()) -> String {
     let interval = max(0, now.timeIntervalSince(date))
     if interval < 60 {
+        // Seconds
         let secs = Int(interval)
         return "\(secs)s"
+    } else if interval < 3600 {
+        // Minutes
+        let minutes = Int(interval / 60)
+        return "\(minutes)m"
+    } else if interval < 86_400 {
+        // Hours
+        let hours = Int(interval / 3600)
+        return "\(hours)h"
     } else {
-        let totalMinutes = Int(interval) / 60
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-        if hours > 0 && minutes > 0 {
-            return "\(hours)h \(minutes)m"
-        } else if hours > 0 {
-            return "\(hours)h"
-        } else {
-            return "\(minutes)m"
-        }
+        // Days (days only from here on)
+        let days = Int(interval / 86_400)
+        return "\(days)d"
     }
 }
 
@@ -563,4 +565,3 @@ private struct AdminPasscodeSheet: View {
         }
     }
 }
-

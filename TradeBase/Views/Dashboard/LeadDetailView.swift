@@ -10,9 +10,9 @@ struct LeadDetailView: View {
     let lead: MarketplaceLead
     @State private var region: MKCoordinateRegion?
 
-    // Quick Look gallery state
-    @State private var showGallery = false
-    @State private var galleryIndex: Int = 0
+    // Single-image Quick Look state (matches Chat behavior)
+    @State private var showQL = false
+    @State private var qlItem: NSURL?
 
     // Phase 2: navigation to chat
     @State private var openConversation: Conversation? = nil
@@ -74,10 +74,6 @@ struct LeadDetailView: View {
                 region = MKCoordinateRegion(center: coord, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02))
             }
         }
-        .fullScreenCover(isPresented: $showGallery) {
-            ImageQuickLookPreview(urls: previewableImageURLs(from: lead.photoURLs), startIndex: galleryIndex)
-                .ignoresSafeArea()
-        }
         .navigationTitle("Lead")
         .navigationBarTitleDisplayMode(.inline)
         // Push ChatView instead of presenting it as a sheet
@@ -111,6 +107,13 @@ struct LeadDetailView: View {
         } message: {
             Text("We can’t start a chat for this job because the customer’s identity isn’t attached to the listing.")
         }
+        // Single-image Quick Look sheet (exactly like Chat)
+        .sheet(isPresented: $showQL) {
+            if let item = qlItem {
+                QLPreviewControllerWrapper(item: item, isPresented: $showQL)
+                    .ignoresSafeArea()
+            }
+        }
     }
 
     @ViewBuilder
@@ -137,8 +140,11 @@ struct LeadDetailView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    galleryIndex = idx
-                                    showGallery = true
+                                    // Normalize exactly like Chat’s behavior and present single-item QL
+                                    if let preview = normalizedPreviewURL(for: url) {
+                                        qlItem = preview as NSURL
+                                        showQL = true
+                                    }
                                 }
                                 .accessibilityLabel("Photo \(idx + 1) of \(lead.photoURLs.count). Double tap to view.")
                         } else {
@@ -150,8 +156,10 @@ struct LeadDetailView: View {
                             .frame(width: 260, height: 180)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .onTapGesture {
-                                galleryIndex = idx
-                                showGallery = true
+                                if let preview = normalizedPreviewURL(for: url) {
+                                    qlItem = preview as NSURL
+                                    showQL = true
+                                }
                             }
                         }
                     }
@@ -374,96 +382,85 @@ struct LeadDetailView: View {
         }
     }
 
-    private func previewableImageURLs(from urls: [URL]) -> [URL] {
+    // MARK: - Quick Look normalization (single image) – matches Chat
+
+    private func normalizedPreviewURL(for original: URL) -> URL? {
+        // If it already has a reasonable image extension, just use it.
+        let ext = original.pathExtension.lowercased()
+        if ["jpg", "jpeg", "png", "heic", "gif", "tiff"].contains(ext) {
+            return original
+        }
+
+        // Copy/convert to a temp QL folder with a proper extension
         let fm = FileManager.default
-        let tmp = fm.temporaryDirectory.appendingPathComponent("QLPreviewImages", isDirectory: true)
-        if !fm.fileExists(atPath: tmp.path) {
-            try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let tmpDir = fm.temporaryDirectory.appendingPathComponent("QLPreview", isDirectory: true)
+        if !fm.fileExists(atPath: tmpDir.path) {
+            try? fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         }
+        let newExt = "jpg"
+        var dest = tmpDir.appendingPathComponent(UUID().uuidString).appendingPathExtension(newExt)
 
-        return urls.compactMap { url in
-            guard fm.fileExists(atPath: url.path) else { return nil }
-            let ext = url.pathExtension.lowercased()
-            if !ext.isEmpty { return url }
-
-            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
-                  let inferred = inferImageType(from: data) else {
-                return url
+        do {
+            if let data = try? Data(contentsOf: original),
+               let img = UIImage(data: data),
+               let jpg = img.jpegData(compressionQuality: 0.95) {
+                try jpg.write(to: dest, options: [.atomic])
+            } else {
+                try fm.copyItem(at: original, to: dest)
             }
-
-            let newExt = preferredExtension(for: inferred) ?? "jpg"
-            let base = url.deletingPathExtension().lastPathComponent
-            var newURL = tmp.appendingPathComponent(base).appendingPathExtension(newExt)
-
-            if fm.fileExists(atPath: newURL.path) == false {
-                do {
-                    try data.write(to: newURL, options: [.atomic])
-                    var rvs = URLResourceValues(); rvs.isExcludedFromBackup = true
-                    try? newURL.setResourceValues(rvs)
-                } catch {
-                    return url
-                }
-            }
-            return newURL
+            var rvs = URLResourceValues()
+            rvs.isExcludedFromBackup = true
+            try? dest.setResourceValues(rvs)
+            return dest
+        } catch {
+            return original // fallback; QL may still show a generic view
         }
-    }
-
-    private func inferImageType(from data: Data) -> UTType? {
-        if data.starts(with: [0xFF, 0xD8, 0xFF]) { return .jpeg }
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return .png }
-        if data.count >= 12 {
-            let box = data.prefix(12)
-            if box[4...7] == Data([0x66, 0x74, 0x79, 0x70]) {
-                let brand = box[8...11]
-                let brands: [Data] = [
-                    Data("heic".utf8), Data("heif".utf8),
-                    Data("hevc".utf8), Data("mif1".utf8), Data("msf1".utf8)
-                ]
-                if brands.contains(brand) { return .heic }
-            }
-        }
-        if data.starts(with: [0x47, 0x49, 0x46, 0x38]) { return .gif }
-        if data.starts(with: [0x49, 0x49, 0x2A, 0x00]) || data.starts(with: [0x4D, 0x4D, 0x00, 0x2A]) {
-            return .tiff
-        }
-        return nil
-    }
-
-    private func preferredExtension(for type: UTType) -> String? {
-        if type.conforms(to: .jpeg) { return "jpg" }
-        if type.conforms(to: .png) { return "png" }
-        if type.conforms(to: .heic) { return "heic" }
-        if type.conforms(to: .gif) { return "gif" }
-        if type.conforms(to: .tiff) { return "tiff" }
-        return type.preferredFilenameExtension
     }
 }
 
-// MARK: - Native Quick Look image preview
+// MARK: - Native Quick Look wrapper with Close button (local copy from Chat)
 
-private struct ImageQuickLookPreview: UIViewControllerRepresentable {
-    let urls: [URL]
-    let startIndex: Int
+private struct QLPreviewControllerWrapper: UIViewControllerRepresentable {
+    let item: NSURL
+    @Binding var isPresented: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator(urls: urls) }
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let preview = QLPreviewController()
+        preview.dataSource = context.coordinator
 
-    func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        controller.currentPreviewItemIndex = max(0, min(startIndex, urls.count - 1))
-        return controller
+        let close = UIBarButtonItem(systemItem: .close)
+        close.target = context.coordinator
+        close.action = #selector(Coordinator.closeTapped)
+        preview.navigationItem.rightBarButtonItem = close
+        preview.navigationItem.leftItemsSupplementBackButton = false
+
+        let nav = UINavigationController(rootViewController: preview)
+        nav.modalPresentationStyle = .fullScreen
+        nav.navigationBar.prefersLargeTitles = false
+        nav.navigationBar.tintColor = .white
+        nav.navigationBar.isTranslucent = true
+        return nav
     }
 
-    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) { }
+
+    func makeCoordinator() -> Coordinator { Coordinator(item: item, isPresented: $isPresented) }
 
     final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        let items: [NSURL]
-        init(urls: [URL]) {
-            self.items = urls.map { $0 as NSURL }
+        let item: NSURL
+        @Binding var isPresented: Bool
+
+        init(item: NSURL, isPresented: Binding<Bool>) {
+            self.item = item
+            self._isPresented = isPresented
         }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { items.count }
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-            items[index]
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { item }
+
+        @objc func closeTapped() {
+            isPresented = false
         }
     }
 }
+
