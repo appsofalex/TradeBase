@@ -392,7 +392,8 @@ struct TradespersonSettingsView: View {
     private func deleteAccountFlow() async {
         await MainActor.run { isDeleting = true }
         do {
-            try await state.deleteAccount()
+            // If you also want to re-show the unauthenticated onboarding pager, pass true.
+            try await state.deleteTradespersonAccountAndResetSetup(resetUnauthOnboarding: false)
             await MainActor.run { dismiss() }
         } catch {
             await MainActor.run { deleteErrorMessage = error.localizedDescription }

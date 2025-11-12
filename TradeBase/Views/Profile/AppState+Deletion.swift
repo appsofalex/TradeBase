@@ -65,5 +65,45 @@ extension AppState {
             self.signOut()
         }
     }
-}
 
+    // MARK: - Role-aware delete helpers
+
+    /// Delete a TRADESPERSON account and reset setup gating so setup runs again next time.
+    func deleteTradespersonAccountAndResetSetup(resetUnauthOnboarding: Bool = false) async throws {
+        // Capture identity before it is cleared by signOut()
+        let id = currentAuthIdentity()
+        try await deleteAccountComprehensive()
+
+        // Remove from registered set so needsSetup(for: .tradesperson) returns true for this identity
+        if let id {
+            registeredTradespersonAccounts.remove(id)
+            UserDefaults.standard.set(Array(registeredTradespersonAccounts), forKey: Self.registeredTradespersonAccountsKey)
+        }
+
+        // Ensure setup gating is reset for next authenticated session
+        await MainActor.run {
+            self.tradespersonSetupCompleted = false
+            if resetUnauthOnboarding {
+                self.tradespersonOnboardingCompleted = false
+            }
+        }
+    }
+
+    /// Delete a CUSTOMER account and reset setup gating so setup runs again next time.
+    func deleteCustomerAccountAndResetSetup(resetUnauthOnboarding: Bool = false) async throws {
+        let id = currentAuthIdentity()
+        try await deleteAccountComprehensive()
+
+        if let id {
+            registeredCustomerAccounts.remove(id)
+            UserDefaults.standard.set(Array(registeredCustomerAccounts), forKey: Self.registeredCustomerAccountsKey)
+        }
+
+        await MainActor.run {
+            self.customerSetupCompleted = false
+            if resetUnauthOnboarding {
+                self.customerOnboardingCompleted = false
+            }
+        }
+    }
+}

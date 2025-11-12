@@ -11,6 +11,10 @@ struct ChatView: View {
     @Environment(\.appState) private var state
     let conversation: Conversation
 
+    // New: control whether the composer should focus on appear (to raise keyboard)
+    var focusOnAppear: Bool = false
+    @FocusState private var isComposerFocused: Bool
+
     @State private var messages: [Message] = []
     @State private var newText: String = ""
     @State private var isLoading = true
@@ -92,7 +96,16 @@ struct ChatView: View {
             await resolveTitleIfNeeded()
             await loadInitial()
         }
-        .onAppear { startListening() }
+        .onAppear {
+            startListening()
+            // If asked to, focus the composer to raise the keyboard.
+            if focusOnAppear {
+                // Delay slightly to ensure the TextField is in the hierarchy.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isComposerFocused = true
+                }
+            }
+        }
         .onDisappear {
             messagesListenerTask?.cancel()
             messagesListenerTask = nil
@@ -201,6 +214,7 @@ struct ChatView: View {
             TextField("Message", text: $newText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
+                .focused($isComposerFocused) // New: focus binding
 
             Button {
                 Task { await send() }
@@ -815,3 +829,4 @@ private struct MessageBubble: View {
         }
     }
 }
+

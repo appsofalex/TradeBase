@@ -19,6 +19,9 @@ struct LeadDetailView: View {
     @State private var isOpeningChat = false
     @State private var openError: String?
 
+    // NEW: flag to control initial focus in ChatView
+    @State private var focusComposerOnChatAppear = false
+
     // NEW: fallback alert when identity is missing
     @State private var showIdentityUnavailableAlert = false
 
@@ -85,7 +88,8 @@ struct LeadDetailView: View {
                 )
             ) {
                 if let convo = openConversation {
-                    ChatView(conversation: convo)
+                    // Pass focus flag so the keyboard raises when a new conversation starts
+                    ChatView(conversation: convo, focusOnAppear: focusComposerOnChatAppear)
                         .environment(\.appState, state)
                 } else {
                     EmptyView()
@@ -321,9 +325,25 @@ struct LeadDetailView: View {
             isOpeningChat = true
             openError = nil
         }
+
+        // Determine if this will be a brand-new conversation so we can focus the composer.
+        var shouldFocus = false
+        if let me = state.currentAuthIdentity() {
+            if let existing = try? await state.messagingService.fetchConversations(for: me) {
+                let already = existing.contains(where: { conv in
+                    Set(conv.participantIds) == Set([me, otherUserId]) && conv.leadId == lead.id.uuidString
+                })
+                shouldFocus = !already
+            } else {
+                // If we can’t check, err on focusing for better UX when initiating
+                shouldFocus = true
+            }
+        }
+
         do {
             let convo = try await state.openOrCreateConversation(with: otherUserId, leadId: lead.id.uuidString)
             await MainActor.run {
+                self.focusComposerOnChatAppear = shouldFocus
                 self.openConversation = convo
                 self.isOpeningChat = false
             }

@@ -392,7 +392,8 @@ struct CustomerSettingsView: View {
     private func deleteAccountFlow() async {
         await MainActor.run { isDeleting = true }
         do {
-            try await state.deleteAccount()
+            // If you want to re-show the customer onboarding pager before AuthEntryView, pass true.
+            try await state.deleteCustomerAccountAndResetSetup(resetUnauthOnboarding: false)
             await MainActor.run { dismiss() }
         } catch {
             await MainActor.run { deleteErrorMessage = error.localizedDescription }

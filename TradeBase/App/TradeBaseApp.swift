@@ -61,13 +61,12 @@ struct TradeBaseApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                // Primary injection via environment (for @Observable classes)
                 .environment(state)
-                // Also inject via custom EnvironmentValues key so views using \.appState get the same instance.
                 .environment(\.appState, state)
-                // Other custom environment injections
                 .environment(\.customerJobListingStore, customerListings)
                 .task {
+                    // Auth and role are already restored synchronously in AppState.init.
+                    // Now hydrate data and subscriptions.
                     do {
                         await state.load()
                         await state.ensureCommunitySubscription(city: nil as String?)
@@ -93,7 +92,6 @@ struct TradeBaseApp: App {
                         if parts.count >= 2, parts[0].lowercased() == "job",
                            let uuid = UUID(uuidString: parts[1]) {
                             state.pendingJobResumeID = uuid
-                            // Navigate to My Jobs and select Drafts tab
                             state.preferredMyJobsStatus = JobListingStatus.draft
                             state.navigateToMyJobsSignal &+= 1
                             return
@@ -115,3 +113,4 @@ struct TradeBaseApp: App {
         }
     }
 }
+

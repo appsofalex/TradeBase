@@ -451,7 +451,7 @@ struct PLIComplianceDetailView: View {
                                 .tint(.red)
                                 .clipShape(Capsule())
                             } else {
-                                CapsuleActionButton(title: "Add file", systemImage: "plus.circle.fill") {
+                                CapsuleActionButton(title: "Add document", systemImage: "plus.circle.fill") {
                                     showPicker = true
                                 }
                             }
@@ -557,7 +557,7 @@ struct GuaranteesComplianceDetailView: View {
                                 .tint(.red)
                                 .clipShape(Capsule())
                             } else {
-                                CapsuleActionButton(title: "Add file", systemImage: "plus.circle.fill") {
+                                CapsuleActionButton(title: "Add document", systemImage: "plus.circle.fill") {
                                     showPicker = true
                                 }
                             }

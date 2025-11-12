@@ -23,8 +23,8 @@ enum JobBudgetType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    // Optional: UI order with Quote first without depending on declaration order elsewhere
-    static var uiOrder: [JobBudgetType] { [.quote, .fixed, .hourly, .range] }
+    // Only control what the UI shows; keep .range in the enum for back-compat.
+    static var uiOrder: [JobBudgetType] { [.quote, .fixed, .hourly] }
 }
 
 enum JobListingStatus: String, Codable, CaseIterable, Identifiable {
@@ -233,4 +233,3 @@ final class CustomerJobListingStore {
         listings.filter { $0.ownerUserId == ownerId }.sorted { $0.updatedAt > $1.updatedAt }
     }
 }
-
