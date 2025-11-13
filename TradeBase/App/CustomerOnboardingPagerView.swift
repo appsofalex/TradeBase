@@ -26,7 +26,7 @@ struct CustomerOnboardingPagerView: View {
             cta: "Continue"
         ),
         .init(
-            title: "Get quotes from local pros",
+            title: "Get quotes from local tradespeople",
             subtitle: "Rated tradespeople nearby will respond with quotes.",
             symbolName: "person.3.sequence.fill",
             cta: "Continue"

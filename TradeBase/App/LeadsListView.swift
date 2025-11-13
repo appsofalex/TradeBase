@@ -11,6 +11,8 @@ struct LeadsView: View {
 
     // Location picker sheet
     @State private var showingLocationPicker = false
+    // New: tradesperson premium upsell
+    @State private var showingPremiumUpsell = false
 
     // NEW: Job type filter sheet
     @State private var showingFilterSheet = false
@@ -53,7 +55,12 @@ struct LeadsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        showingLocationPicker = true
+                        // If tradesperson and not premium, show upsell instead of picker
+                        if state.selectedRole == .tradesperson && state.profile.isPremium == false {
+                            showingPremiumUpsell = true
+                        } else {
+                            showingLocationPicker = true
+                        }
                     } label: {
                         ZStack {
                             HStack(spacing: 8) {
@@ -173,6 +180,10 @@ struct LeadsView: View {
                 hasInitializedPill = true
                 Task { await refresh() }
             }
+        }
+        // Present the tradesperson premium upsell full-screen
+        .fullScreenCover(isPresented: $showingPremiumUpsell) {
+            PremiumUpsellView()
         }
         .sheet(isPresented: $showingFilterSheet) {
             JobTypeFilterSheet(

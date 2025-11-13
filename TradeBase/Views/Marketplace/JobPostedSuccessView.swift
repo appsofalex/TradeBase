@@ -6,7 +6,7 @@ struct JobPostedSuccessView: View {
     var title: String = "Your job is live!"
     var message: String = "Tradespeople can now see your job. We’ll notify you as they show interest."
     var tips: [String] = [
-        "Keep your phone nearby — we’ll send notifications when pros reach out.",
+        "Keep your phone nearby — we’ll send notifications when tradespeople reach out.",
         "Check profiles and reviews before accepting.",
         "Respond promptly to messages to secure a booking.",
         "Add more photos if anything changes."

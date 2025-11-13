@@ -181,7 +181,7 @@ struct JobListingEditorSheet: View {
                                     }
                                 }
                             } else {
-                                Text("Add photos to help pros understand the job.")
+                                Text("Add photos to help tradespeople understand the job.")
                                     .font(.footnote)
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)

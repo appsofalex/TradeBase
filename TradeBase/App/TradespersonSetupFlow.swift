@@ -159,7 +159,8 @@ struct TradespersonSetupFlow: View {
             Text("This is shown to customers in chats and on your profile.")
                 .font(.footnote)
                 .foregroundStyle(TBTheme.offWhiteSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -203,6 +204,9 @@ struct TradespersonSetupFlow: View {
                 if catalogSkills.isEmpty {
                     Text("No predefined skills yet. Add your own below.")
                         .foregroundStyle(TBTheme.offWhiteSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .listRowBackground(Color.clear)
                 } else {
                     ForEach(catalogSkills, id: \.self) { skill in
                         Toggle(skill, isOn: Binding(
@@ -211,6 +215,7 @@ struct TradespersonSetupFlow: View {
                                 if isOn { selectedSkills.insert(skill) } else { selectedSkills.remove(skill) }
                             }
                         ))
+                        .listRowBackground(Color.clear)
                     }
                 }
             } header: {
@@ -221,6 +226,9 @@ struct TradespersonSetupFlow: View {
                 if customSkills.isEmpty {
                     Text("Add any services you offer that aren’t listed above.")
                         .foregroundStyle(TBTheme.offWhiteSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .listRowBackground(Color.clear)
                 } else {
                     ForEach(customSkills, id: \.self) { skill in
                         Toggle(skill, isOn: Binding(
@@ -236,6 +244,7 @@ struct TradespersonSetupFlow: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .listRowBackground(Color.clear)
                     }
                 }
 
@@ -250,16 +259,27 @@ struct TradespersonSetupFlow: View {
                     }
                     .disabled(newSkill.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+                .listRowBackground(Color.clear)
             } header: {
                 Text("Custom skills").foregroundStyle(TBTheme.offWhite)
             }
         }
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(TBTheme.gradient.ignoresSafeArea())
+        // Ensure every row uses a transparent background to avoid seams
+        .onAppear {
+            UITableView.appearance().backgroundColor = .clear
+        }
+        .onDisappear {
+            // Optionally reset for other screens if needed
+            UITableView.appearance().backgroundColor = nil
+        }
         .onChange(of: primaryTrade) { _, _ in
             // Keep custom skills; recommended selection persists
         }
-        .padding(.top, -8)
+        // Remove negative top padding to avoid revealing a header seam
+        // .padding(.top, -8)  // removed
     }
 
     private var bioStep: some View {
@@ -287,7 +307,8 @@ struct TradespersonSetupFlow: View {
             Text("You can edit your bio anytime from your Profile.")
                 .font(.footnote)
                 .foregroundStyle(TBTheme.offWhiteSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 

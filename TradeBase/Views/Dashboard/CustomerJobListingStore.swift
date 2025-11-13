@@ -23,8 +23,8 @@ enum JobBudgetType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    // Only control what the UI shows; keep .range in the enum for back-compat.
-    static var uiOrder: [JobBudgetType] { [.quote, .fixed, .hourly] }
+    // UI should only offer Quote and Hourly now (keep .fixed/.range for back-compat).
+    static var uiOrder: [JobBudgetType] { [.quote, .hourly] }
 }
 
 enum JobListingStatus: String, Codable, CaseIterable, Identifiable {
@@ -46,7 +46,8 @@ struct JobListing: Identifiable, Codable, Hashable {
     var location: Address
     var photos: [URL] = []
 
-    var budgetType: JobBudgetType = .fixed
+    // Default to Quote for new jobs
+    var budgetType: JobBudgetType = .quote
     var budgetMin: Decimal? = nil
     var budgetMax: Decimal? = nil
     var currency: String = "GBP"

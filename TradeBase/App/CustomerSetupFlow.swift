@@ -150,7 +150,8 @@ struct CustomerSetupFlow: View {
             Text("This appears on your requests and messages.")
                 .font(.footnote)
                 .foregroundStyle(TBTheme.offWhiteSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -158,10 +159,11 @@ struct CustomerSetupFlow: View {
         VStack(spacing: 16) {
             PillTextField(systemImage: "mappin.and.ellipse", placeholder: "Your city (e.g. London)", text: $city)
                 .textInputAutocapitalization(.words)
-            Text("We’ll use this to show you nearby pros.")
+            Text("We’ll use this to show you nearby tradespeople.")
                 .font(.footnote)
                 .foregroundStyle(TBTheme.offWhiteSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -190,7 +192,8 @@ struct CustomerSetupFlow: View {
             Text("You can edit your bio anytime from your Profile.")
                 .font(.footnote)
                 .foregroundStyle(TBTheme.offWhiteSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -210,9 +213,9 @@ struct CustomerSetupFlow: View {
 
     private var subtitleForStep: String {
         switch step {
-        case 0: return "Tell us your name so pros know who they’re chatting with."
+        case 0: return "Tell us your name so tradespeople know who they’re chatting with."
         case 1: return "Add your city to match with local tradespeople."
-        case 2: return "Add a short intro to help pros get to know you."
+        case 2: return "Add a short intro to help tradespeople get to know you."
         case 3: return "Add a clear profile photo. You can change it later."
         default: return ""
         }
@@ -263,4 +266,3 @@ struct CustomerSetupFlow: View {
         return true
     }
 }
-

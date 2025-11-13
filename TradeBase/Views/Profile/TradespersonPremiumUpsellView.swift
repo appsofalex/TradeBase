@@ -28,11 +28,11 @@ struct PremiumUpsellView: View {
 
                     // Benefits
                     VStack(alignment: .leading, spacing: 14) {
-                        benefitRow(icon: "arrow.up.circle.fill", title: "Priority placement", subtitle: "Appear higher in local searches to win more leads.")
-                        benefitRow(icon: "checkmark.seal.fill", title: "Verified badge", subtitle: "Build trust with a verification badge on your profile.")
-                        benefitRow(icon: "bolt.fill", title: "Instant booking", subtitle: "Let customers book you instantly to reduce back-and-forth.")
-                        benefitRow(icon: "megaphone.fill", title: "Boosted visibility", subtitle: "Get highlighted in Marketplace to stand out.")
-                        benefitRow(icon: "headset.circle.fill", title: "Priority support", subtitle: "Faster help when you need it.")
+                        benefitRow(icon: "location.circle.fill", title: "Location filter", subtitle: "Find local jobs fast.")
+                        benefitRow(icon: "checkmark.seal.fill", title: "Verified badge", subtitle: "Boost customer trust.")
+                        benefitRow(icon: "bolt.fill", title: "Instant booking", subtitle: "Let customers book you instantly.")
+                        benefitRow(icon: "message.fill", title: "Message notifications", subtitle: "Get alerts when you receive a message.")
+                        benefitRow(icon: "dollarsign.circle.fill", title: "Income tracker", subtitle: "See how much you've earnt over time.")
                     }
                     .padding()
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -50,30 +50,33 @@ struct PremiumUpsellView: View {
                             .font(.footnote)
                             .foregroundStyle(TBTheme.offWhiteSecondary)
 
-                        Button {
-                            upgrade()
-                        } label: {
-                            HStack {
-                                Image(systemName: "star.fill")
-                                Text("Upgrade to Premium")
-                                    .fontWeight(.semibold)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                        // Non-interactive pill: Premium coming soon (branded) — use Capsule to match Dismiss curvature
+                        HStack {
+                            Image(systemName: "star.fill")
+                            Text("Premium coming soon…")
+                                .fontWeight(.semibold)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(TBTheme.brand)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .font(.body)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14) // keep current height
+                        .background(Capsule().fill(TBTheme.brand))
                         .padding(.top, 4)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Premium coming soon")
 
+                        // Big bottom button: Dismiss (closes the upsell)
                         Button {
                             dismiss()
                         } label: {
-                            Text("Maybe later")
+                            Text("Dismiss")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(TBTheme.offWhiteSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.bordered)
+                        .tint(TBTheme.brand)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.top, 2)
                     }
                 }
@@ -112,12 +115,5 @@ struct PremiumUpsellView: View {
             }
             Spacer()
         }
-    }
-
-    private func upgrade() {
-        // Placeholder for purchase flow; toggle Premium and persist for now.
-        state.profile.isPremium = true
-        state.saveProfile()
-        dismiss()
     }
 }

@@ -203,6 +203,9 @@ private extension View {
     ) -> some View {
         self
             .onChange(of: state.isAuthenticated) { isAuth, _ in
+                // Force forward push on sign-in; back pop on sign-out
+                state.navigationDirection = isAuth ? .forward : .back
+
                 if isAuth {
                     Task {
                         await state.load()

@@ -34,6 +34,8 @@ extension AppState {
             self.authProvider = .google
             self.authEmail = user.profile?.email
             self.isAuthenticated = true
+            // Ensure forward push on sign-in
+            self.navigationDirection = .forward
 
             // Hydrate identity-scoped data immediately
             await load()
@@ -48,8 +50,6 @@ extension AppState {
     }
 
     private static func googleSubjectClaim(fromIDToken token: String) -> String? {
-        // Very light-weight "sub" extraction without full JWT validation (best-effort).
-        // Format: header.payload.signature (Base64URL). We need payload["sub"].
         let parts = token.split(separator: ".")
         guard parts.count >= 2 else { return nil }
         let payloadB64 = String(parts[1])
@@ -88,6 +88,8 @@ extension AppState {
 
         self.authProvider = .apple
         self.isAuthenticated = true
+        // Ensure forward push on sign-in
+        self.navigationDirection = .forward
 
         // Hydrate identity-scoped data immediately
         await load()
@@ -97,40 +99,29 @@ extension AppState {
 
     @MainActor
     func signUp(name: String, email: String, password: String) async throws {
-        // Validate inputs
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NSError(domain: "Auth", code: -3, userInfo: [NSLocalizedDescriptionKey: "Name is required."])
         }
-        
         guard !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NSError(domain: "Auth", code: -4, userInfo: [NSLocalizedDescriptionKey: "Email is required."])
         }
-        
         guard !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NSError(domain: "Auth", code: -5, userInfo: [NSLocalizedDescriptionKey: "Password is required."])
         }
-        
-        // Basic email validation
         let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
         let emailTest = NSPredicate(format: "SELF MATCHES %@", emailRegex)
         guard emailTest.evaluate(with: email) else {
             throw NSError(domain: "Auth", code: -6, userInfo: [NSLocalizedDescriptionKey: "Please enter a valid email address."])
         }
-        
-        // TODO: Implement actual email sign-up logic here
-        // For now, we'll simulate a successful sign-up
-        
-        // Update profile with provided name
+
+        // Simulated successful sign-up
         self.profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Update app auth state
         self.authProvider = .email
         self.authEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         self.isAuthenticated = true
-        // Flip the handoff animation direction for email sign-up as well
-        self.navigationDirection = .back
-        
-        // Hydrate identity-scoped data immediately
+        // Forward push for email sign-up as well
+        self.navigationDirection = .forward
+
         await load()
     }
 
@@ -150,7 +141,6 @@ extension AppState {
             }
             controller.delegate = delegate
             controller.presentationContextProvider = delegate
-            // Retain delegate during the request.
             objc_setAssociatedObject(controller, &AppleAuthDelegate.assocKey, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             controller.performRequests()
         }
@@ -165,7 +155,6 @@ extension AppState {
         }
 
         func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-            // Prefer key window from active scene; fall back to UIApplication.shared.windows for safety.
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let window = scene.windows.first(where: { $0.isKeyWindow }) {
                 return window
@@ -186,7 +175,6 @@ extension AppState {
 
     @MainActor
     private static func topViewController(base: UIViewController? = nil) -> UIViewController? {
-        // Base from caller or root of the key window; fall back to UIApplication.shared.windows.
         let baseVC: UIViewController? = base ?? {
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let window = scene.windows.first(where: { $0.isKeyWindow }) {
@@ -207,4 +195,3 @@ extension AppState {
         return baseVC
     }
 }
-

@@ -19,7 +19,7 @@ struct OnboardingPagerLegacyView: View {
                 TabView(selection: $page) {
                     onboardingPage(
                         title: "Welcome",
-                        subtitle: "TradeBase helps pros and customers connect.",
+                        subtitle: "TradeBase helps tradespeople and customers connect.",
                         icon: "handshake.fill"
                     ).tag(0)
 

@@ -27,6 +27,13 @@ struct AvatarSetupStep: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Profile picture")
             .accessibilityHint(hasAvatar ? "Double tap to change" : "Double tap to add")
+
+            // New helper subtitle below the avatar (used by both setup flows)
+            Text("Tap the circle above to select a photo")
+                .font(.footnote)
+                .foregroundStyle(TBTheme.offWhiteSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 2)
         }
         .photosPicker(isPresented: $isPresentingPhotoPicker,
                       selection: $pickedPhoto,
@@ -113,4 +120,3 @@ struct AvatarSetupStep: View {
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 }
-

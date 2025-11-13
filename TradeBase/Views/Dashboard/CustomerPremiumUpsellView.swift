@@ -32,16 +32,16 @@ struct CustomerPremiumUpsellView: View {
                             VStack(alignment: .leading, spacing: 14) {
                                 benefitRow(icon: "arrow.up.circle.fill",
                                            title: "Featured job posts",
-                                           subtitle: "Boost listings so more local pros see them.")
-                                benefitRow(icon: "bolt.fill",
-                                           title: "Faster responses",
-                                           subtitle: "Instant alerts to tradespeople for quicker replies.")
+                                           subtitle: "Reach more tradespeople with your job listings.")
+                                benefitRow(icon: "info.circle.fill",
+                                           title: "Job insights",
+                                           subtitle: "See who has viewed your job.")
                                 benefitRow(icon: "checkmark.seal.fill",
                                            title: "Verified pros first",
-                                           subtitle: "Matches prioritise top-rated, verified pros.")
-                                benefitRow(icon: "heart.text.square.fill",
-                                           title: "Shortlist & sync",
-                                           subtitle: "Save favourites and access them anywhere.")
+                                           subtitle: "Get seen by more verified tradespeople.")
+                                benefitRow(icon: "message.fill",
+                                           title: "Message notifications",
+                                           subtitle: "Get alerts when you receive a message.")
                                 benefitRow(icon: "eye.fill",
                                            title: "Read receipts",
                                            subtitle: "See when your messages are viewed.")
@@ -62,30 +62,33 @@ struct CustomerPremiumUpsellView: View {
                                     .font(.footnote)
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
 
-                                Button {
-                                    upgrade()
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "star.fill")
-                                        Text("Upgrade to Premium")
-                                            .fontWeight(.semibold)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
+                                // Non-interactive pill: Premium coming soon (branded) — match tradesperson view
+                                HStack {
+                                    Image(systemName: "star.fill")
+                                    Text("Premium coming soon…")
+                                        .fontWeight(.semibold)
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(TBTheme.brand)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .font(.body)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14) // keep height consistent
+                                .background(Capsule().fill(TBTheme.brand))
                                 .padding(.top, 4)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Premium coming soon")
 
+                                // Big bottom button: Dismiss (closes the upsell)
                                 Button {
                                     dismiss()
                                 } label: {
-                                    Text("Maybe later")
+                                    Text("Dismiss")
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(TBTheme.offWhiteSecondary)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 14)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.bordered)
+                                .tint(TBTheme.brand)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .padding(.top, 2)
                             }
                         }
@@ -131,11 +134,5 @@ struct CustomerPremiumUpsellView: View {
             }
             Spacer()
         }
-    }
-
-    private func upgrade() {
-        state.profile.isPremium = true
-        state.saveProfile()
-        dismiss()
     }
 }
