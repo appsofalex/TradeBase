@@ -62,10 +62,10 @@ struct CustomerPremiumUpsellView: View {
                                     .font(.footnote)
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
 
-                                // Non-interactive pill: Premium coming soon (branded) — match tradesperson view
+                                // Non-interactive pill: Pro coming soon (branded) — match tradesperson view
                                 HStack {
                                     Image(systemName: "star.fill")
-                                    Text("Premium coming soon…")
+                                    Text("Pro coming soon…")
                                         .fontWeight(.semibold)
                                 }
                                 .font(.body)
@@ -75,7 +75,7 @@ struct CustomerPremiumUpsellView: View {
                                 .background(Capsule().fill(TBTheme.brand))
                                 .padding(.top, 4)
                                 .accessibilityElement(children: .combine)
-                                .accessibilityLabel("Premium coming soon")
+                                .accessibilityLabel("Pro coming soon")
 
                                 // Big bottom button: Dismiss (closes the upsell)
                                 Button {

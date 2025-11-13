@@ -213,7 +213,7 @@ struct CustomerHomeView: View {
                     .font(.headline)
                     .padding(.vertical, 14)
                     .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(TBTheme.brand))
+                    .background(Capsule().fill(TBTheme.brand)) // pill
                     .foregroundStyle(.white)
             }
             .padding(.top, 6)
@@ -230,9 +230,9 @@ struct CustomerHomeView: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.vertical, 10)
                 .padding(.horizontal, 16)
-                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+                .background(Capsule().fill(.ultraThinMaterial)) // pill to match curvature
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.15))
+                    Capsule().stroke(Color.white.opacity(0.15))
                 )
                 .foregroundStyle(TBTheme.offWhite)
             }
