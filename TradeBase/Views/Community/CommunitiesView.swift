@@ -44,8 +44,14 @@ struct CommunitiesView: View {
         return cityCounts.max(by: { $0.value < $1.value })?.key ?? "London"
     }
 
+    // New: explicit guest detection
+    private var isGuest: Bool {
+        state.authProvider == .guest
+    }
+
+    // Treat “full account” as authenticated but not guest
     private var hasFullAccount: Bool {
-        state.isAuthenticated && state.authProvider != nil
+        state.isAuthenticated && state.authProvider != .none && !isGuest
     }
 
     private func canEdit(_ post: CommunityPost) -> Bool {
@@ -70,7 +76,11 @@ struct CommunitiesView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        if hasFullAccount {
+                        if isGuest {
+                            // EXACT REQUEST: for guests, show the same gated auth sheet
+                            pendingAction = .create
+                            showAuthEntrySheet = true
+                        } else if hasFullAccount {
                             Task {
                                 let canWrite = await state.isCloudKitAvailableForPosting()
                                 await MainActor.run {
@@ -82,6 +92,7 @@ struct CommunitiesView: View {
                                 }
                             }
                         } else {
+                            // Unauthenticated (no provider): keep existing alert
                             pendingAction = .create
                             showAccountGateAlert = true
                         }
@@ -158,6 +169,7 @@ struct CommunitiesView: View {
         }, message: {
             Text(errorMessage ?? "An unknown error occurred.")
         })
+        // Use the same gated modal used in job posting; hide guest skip to force real auth
         .sheet(isPresented: $showAuthEntrySheet, onDismiss: {
             if hasFullAccount {
                 routePendingActionIfPossible()
@@ -165,7 +177,7 @@ struct CommunitiesView: View {
             pendingAction = nil
             pendingPost = nil
         }) {
-            AuthEntryView(presentation: .gatedModal)
+            AuthEntryView(presentation: .gatedModal, hideGuestSkip: true)
         }
         .sheet(isPresented: $showAdminPasscodeSheet, onDismiss: {
             postPendingAdminDelete = nil

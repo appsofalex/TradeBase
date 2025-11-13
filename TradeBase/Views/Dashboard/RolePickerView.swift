@@ -17,13 +17,13 @@ struct RolePickerView: View {
                     .font(.largeTitle.bold())
                     .foregroundStyle(TBTheme.offWhite)
 
-                Text("Choose how you’d like to use the app")
+                Text("Choose how you’d like to use the app:")
                     .foregroundStyle(TBTheme.offWhiteSecondary)
 
                 VStack(spacing: 16) {
                     roleButton(
                         title: "I’m a tradesperson",
-                        subtitle: "Find work, manage jobs, grow your business",
+                        subtitle: "Win more work, stay organised, grow faster",
                         systemImage: "wrench.and.screwdriver.fill"
                     ) {
                         state.selectedRole = .tradesperson
@@ -31,7 +31,7 @@ struct RolePickerView: View {
 
                     roleButton(
                         title: "I need a tradesperson",
-                        subtitle: "Post a job and get help fast",
+                        subtitle: "Describe the job, get quotes, hire fast",
                         systemImage: "person.fill.questionmark"
                     ) {
                         state.selectedRole = .customer

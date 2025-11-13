@@ -97,8 +97,8 @@ struct AuthEntryView: View {
                     Button {
                         Task {
                             isLoading = true
-                            // Flip the handoff animation direction for guest continue
-                            state.navigationDirection = .back
+                            // Forward motion for guest entry into setup
+                            state.navigationDirection = .forward
                             await state.continueAsGuest()
                             isLoading = false
                             if presentation == .gatedModal {
@@ -166,11 +166,10 @@ struct AuthEntryView: View {
 
     private func social(_ action: @escaping () async throws -> Void) async {
         error = nil
-               isLoading = true
+        isLoading = true
         do {
             try await action()
-            // Flip the handoff animation direction for Apple/Google success
-            state.navigationDirection = .back
+            // Do not flip direction here; RootView handles forward on sign-in/setup.
             if presentation == .gatedModal {
                 dismiss()
             }
@@ -209,4 +208,3 @@ private struct SafeAreaInsetTopLeading<Content: View>: View {
         }
     }
 }
-

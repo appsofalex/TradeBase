@@ -62,33 +62,40 @@ struct CustomerPremiumUpsellView: View {
                                     .font(.footnote)
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
 
-                                // Non-interactive pill: Pro coming soon (branded) — match tradesperson view
-                                HStack {
+                                // Branded pill — match “Post a job”
+                                HStack(spacing: 8) {
                                     Image(systemName: "star.fill")
                                     Text("Pro coming soon…")
-                                        .fontWeight(.semibold)
+                                        .fontWeight(.bold)
                                 }
-                                .font(.body)
+                                .font(.headline)
                                 .foregroundStyle(.white)
+                                .padding(.vertical, 14)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14) // keep height consistent
                                 .background(Capsule().fill(TBTheme.brand))
                                 .padding(.top, 4)
                                 .accessibilityElement(children: .combine)
                                 .accessibilityLabel("Pro coming soon")
 
-                                // Big bottom button: Dismiss (closes the upsell)
+                                // Secondary pill — Dismiss
                                 Button {
                                     dismiss()
                                 } label: {
                                     Text("Dismiss")
-                                        .font(.subheadline.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
+                                        .font(.headline)
+                                        .foregroundStyle(TBTheme.offWhite)
                                         .padding(.vertical, 14)
+                                        .frame(maxWidth: .infinity)
+                                        .background(
+                                            Capsule()
+                                                .fill(.ultraThinMaterial)
+                                        )
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                        )
                                 }
-                                .buttonStyle(.bordered)
-                                .tint(TBTheme.brand)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .buttonStyle(.plain)
                                 .padding(.top, 2)
                             }
                         }

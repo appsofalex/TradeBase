@@ -250,6 +250,27 @@ private extension View {
                     state.navigationDirection = .back
                 }
             }
+            // NEW: Ensure entering any setup flow from auth uses a forward push
+            .onChange(of: {
+                state.isAuthenticated &&
+                state.selectedRole == .tradesperson &&
+                state.needsSetup(for: .tradesperson)
+            }()) { newValue, oldValue in
+                if oldValue == false, newValue == true {
+                    state.navigationDirection = .forward
+                }
+            }
+            .onChange(of: {
+                state.isAuthenticated &&
+                state.selectedRole == .customer &&
+                state.needsSetup(for: .customer) &&
+                state.pendingJobResumeID == nil &&
+                state.bypassCustomerSetupOnce == false
+            }()) { newValue, oldValue in
+                if oldValue == false, newValue == true {
+                    state.navigationDirection = .forward
+                }
+            }
             .onChange(of: state.tradespersonSetupCompleted) { newValue, _ in
                 if newValue && state.selectedRole == .tradesperson {
                     selectedTab.wrappedValue = .jobs

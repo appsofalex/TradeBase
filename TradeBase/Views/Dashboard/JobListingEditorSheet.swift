@@ -49,6 +49,9 @@ struct JobListingEditorSheet: View {
     )
     @State private var locatedCoordinate: CLLocationCoordinate2D? = nil
 
+    // iOS 17+ camera that drives the SwiftUI Map
+    @State private var camera: MapCameraPosition = .automatic
+
     @State private var geocodeTask: Task<Void, Never>? = nil
     @State private var isGeocoding: Bool = false
     @State private var geocodeError: String? = nil
@@ -60,6 +63,9 @@ struct JobListingEditorSheet: View {
 
     // Ensure we only hydrate once to avoid wiping user edits if parent view re-renders
     @State private var didHydrateOnce = false
+
+    // NEW: controls the popover presentation of the date picker
+    @State private var isShowingDatePicker = false
 
     // Validation roughly aligned to wizard
     private var canSave: Bool {
@@ -105,26 +111,46 @@ struct JobListingEditorSheet: View {
                                 .textFieldStyle(TBTextFieldStyle())
                                 .lineLimit(3...6)
 
-                            // Category picker (matches wizard)
+                            // Category dropdown (native Menu + Picker)
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Category")
                                     .font(.footnote.weight(.semibold))
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
-                                NavigationLink {
-                                    // Direct binding ensures we only mutate category, not replace the whole listing.
-                                    TradeTypeSelectionView(selection: $category)
+
+                                Menu {
+                                    // Optional “Clear” at the top
+                                    if category != nil {
+                                        Button(role: .destructive) {
+                                            category = nil
+                                        } label: {
+                                            Label("Clear selection", systemImage: "xmark.circle")
+                                        }
+                                        Divider()
+                                    }
+
+                                    // Native Picker inside Menu keeps selection in place
+                                    Picker("Category", selection: Binding(get: {
+                                        category ?? TradeType.allCases.first
+                                    }, set: { newValue in
+                                        category = newValue
+                                    })) {
+                                        ForEach(TradeType.allCases) { type in
+                                            Text(type.displayName).tag(Optional(type))
+                                        }
+                                    }
                                 } label: {
                                     HStack {
                                         Text(category?.displayName ?? "Select a category")
                                             .foregroundStyle(category == nil ? TBTheme.offWhiteSecondary : TBTheme.offWhite)
                                         Spacer()
-                                        Image(systemName: "chevron.right")
+                                        Image(systemName: "chevron.up.chevron.down")
                                             .foregroundStyle(TBTheme.offWhiteSecondary)
                                     }
                                     .padding()
                                     .background(Color.black.opacity(0.2))
                                     .cornerRadius(12)
                                 }
+                                .menuStyle(.automatic)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -192,7 +218,7 @@ struct JobListingEditorSheet: View {
                         // Location
                         sectionHeader("Location")
                         VStack(spacing: 12) {
-                            TextField("Address line 1 (optional)", text: $line1)
+                            TextField("Address", text: $line1)
                                 .textFieldStyle(TBTextFieldStyle())
                                 .onChange(of: line1) { _ in scheduleGeocode() }
 
@@ -208,7 +234,7 @@ struct JobListingEditorSheet: View {
                             // Map preview
                             VStack(spacing: 8) {
                                 ZStack {
-                                    Map(position: .constant(.region(region)), interactionModes: [.zoom, .pan]) {
+                                    Map(position: $camera, interactionModes: [.zoom, .pan]) {
                                         if let coord = locatedCoordinate {
                                             Annotation("",
                                                        coordinate: coord) {
@@ -225,6 +251,22 @@ struct JobListingEditorSheet: View {
                                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                                             .stroke(TBTheme.offWhite.opacity(0.25), lineWidth: 1)
                                     )
+                                    // Always-on recenter button overlay
+                                    .overlay(alignment: .bottomTrailing) {
+                                        Button(action: recenterMap) {
+                                            Image(systemName: "location.fill")
+                                                .symbolRenderingMode(.hierarchical)
+                                                .foregroundStyle(.white)
+                                                .padding(10)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                        .fill(.ultraThinMaterial)
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(10)
+                                        .accessibilityLabel("Recenter on pin")
+                                    }
 
                                     if isGeocoding {
                                         ProgressView().tint(TBTheme.offWhite)
@@ -310,35 +352,68 @@ struct JobListingEditorSheet: View {
                             Toggle("Urgent", isOn: $isUrgent)
                                 .tint(TBTheme.brand)
 
-                            DatePicker("Preferred start date", selection: Binding(
-                                get: { startDate ?? Date() },
-                                set: { startDate = $0 }
-                            ), displayedComponents: [.date])
+                            // Compact row that opens a popover DatePicker which auto-dismisses on select
+                            Button {
+                                isShowingDatePicker = true
+                            } label: {
+                                HStack {
+                                    Text("Preferred start date")
+                                    Spacer()
+                                    Text(formattedDate(startDate))
+                                        .foregroundStyle(TBTheme.brand)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $isShowingDatePicker, arrowEdge: .bottom) {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    DatePicker(
+                                        "Preferred start date",
+                                        selection: Binding(get: { startDate ?? Date() }, set: { startDate = $0 }),
+                                        displayedComponents: [.date]
+                                    )
+                                    .datePickerStyle(.graphical)
+                                    .labelsHidden()
+                                    .tint(TBTheme.brand)
+                                    .onChange(of: startDate) { _, _ in
+                                        // Auto-dismiss shortly after a date is picked
+                                        Task { @MainActor in
+                                            try? await Task.sleep(nanoseconds: 120_000_000) // 0.12s
+                                            isShowingDatePicker = false
+                                        }
+                                    }
+
+                                    Button("Done") { isShowingDatePicker = false }
+                                        .font(.headline)
+                                        .foregroundStyle(TBTheme.brand)
+                                }
+                                .padding()
+                                .presentationBackground(.ultraThinMaterial)
+                            }
                         }
                         .padding(.horizontal, 20)
 
-                        // Post it! pill button (posting flow only)
+                        // Post it! button — match CustomerHomeView CTA (full-width Capsule)
                         if showPublish {
-                            HStack {
+                            VStack {
                                 Button(action: postItTapped) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "paperplane.fill")
                                         Text("Post it!")
                                             .fontWeight(.bold)
                                     }
+                                    .font(.headline)
                                     .foregroundStyle(.white)
-                                    .padding(.horizontal, 18)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        Capsule()
-                                            .fill(TBTheme.brand)
-                                            .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 6)
-                                    )
+                                    .padding(.vertical, 14)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Capsule().fill(TBTheme.brand))
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(!canSave)
                                 .opacity(canSave ? 1 : 0.6)
-                                Spacer()
                             }
                             .padding(.horizontal, 20)
                         }
@@ -395,6 +470,8 @@ struct JobListingEditorSheet: View {
                 didHydrateOnce = true
                 // Kick an initial geocode for the current address
                 scheduleGeocode()
+                // Initialize camera to current region
+                camera = .region(region)
             }
             // Keyboard visibility (we keep this to adjust layout if you want to react elsewhere)
             keyboardObserver.start { visible in
@@ -569,6 +646,29 @@ struct JobListingEditorSheet: View {
         onPublish(updated)
         dismiss()
     }
+
+    // MARK: - Helpers
+
+    private func formattedDate(_ date: Date?) -> String {
+        guard let d = date else { return "Select" }
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .none
+        return df.string(from: d)
+    }
+
+    private func recenterMap() {
+        // Prefer the locatedCoordinate from geocoding; fallback to current region center.
+        let targetCoord = locatedCoordinate ?? region.center
+        let targetRegion = MKCoordinateRegion(
+            center: targetCoord,
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+        region = targetRegion
+        withAnimation(.easeInOut(duration: 0.25)) {
+            camera = .region(targetRegion)
+        }
+    }
 }
 
 // MARK: - CurrencyAmountField (identical styling to wizard)
@@ -721,6 +821,7 @@ private extension JobListingEditorSheet {
             withAnimation(.easeInOut) {
                 region = MKCoordinateRegion(center: coord,
                                             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
+                camera = .region(region)
             }
         } catch is CancellationError {
             // ignored
@@ -731,3 +832,4 @@ private extension JobListingEditorSheet {
         }
     }
 }
+
