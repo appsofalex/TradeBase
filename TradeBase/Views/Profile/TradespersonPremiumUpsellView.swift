@@ -17,7 +17,7 @@ struct PremiumUpsellView: View {
                         Image(systemName: "bolt.badge.a")
                             .font(.system(size: 40, weight: .bold))
                             .foregroundStyle(TBTheme.brand)
-                        Text("TradeBase Premium")
+                        Text("TradeBase Pro")
                             .font(.title2.bold())
                             .foregroundStyle(TBTheme.offWhite)
                         Text("Get more jobs, stand out, and save time.")
