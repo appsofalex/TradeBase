@@ -33,7 +33,7 @@ struct PremiumPanel: View {
     var onUpgradeTap: () -> Void = {}
 
     var body: some View {
-        SectionCard(title: "TradeBase Premium", icon: "bolt.badge.a") {
+        SectionCard(title: "TradeBase Pro", icon: "bolt.badge.a") {
             if isPremium {
                 Label("You're Premium — priority leads, verified badge, instant booking.",
                       systemImage: "checkmark.seal.fill")

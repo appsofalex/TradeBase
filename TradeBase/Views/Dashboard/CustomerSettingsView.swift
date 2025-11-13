@@ -195,7 +195,7 @@ struct CustomerSettingsView: View {
     private var subscriptionSection: some View {
         Section("Subscription") {
             if state.profile.isPremium {
-                Label("You’re on TradeBase Premium", systemImage: "checkmark.seal.fill")
+                Label("You’re on TradeBase Pro", systemImage: "checkmark.seal.fill")
                     .foregroundStyle(.green)
             } else {
                 Label("Free plan", systemImage: "seal")
