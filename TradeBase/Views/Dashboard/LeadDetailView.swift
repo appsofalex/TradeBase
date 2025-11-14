@@ -134,19 +134,12 @@ struct LeadDetailView: View {
 
     @ViewBuilder
     private var photosSection: some View {
-        if lead.photoURLs.isEmpty {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 160)
-                .overlay {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                }
-        } else {
+        // Only render if at least one image decodes successfully.
+        let urls = lead.photoURLs.filter { UIImage(contentsOfFile: $0.path) != nil }
+        if !urls.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(Array(lead.photoURLs.enumerated()), id: \.element) { idx, url in
+                    ForEach(Array(urls.enumerated()), id: \.element) { idx, url in
                         if let img = UIImage(contentsOfFile: url.path) {
                             Image(uiImage: img)
                                 .resizable()
@@ -156,27 +149,12 @@ struct LeadDetailView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    // Normalize exactly like Chat’s behavior and present single-item QL
                                     if let preview = normalizedPreviewURL(for: url) {
                                         qlItem = preview as NSURL
                                         showQL = true
                                     }
                                 }
-                                .accessibilityLabel("Photo \(idx + 1) of \(lead.photoURLs.count). Double tap to view.")
-                        } else {
-                            ZStack {
-                                Color.white.opacity(0.06)
-                                Image(systemName: "photo")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(width: 260, height: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .onTapGesture {
-                                if let preview = normalizedPreviewURL(for: url) {
-                                    qlItem = preview as NSURL
-                                    showQL = true
-                                }
-                            }
+                                .accessibilityLabel("Photo \(idx + 1) of \(urls.count). Double tap to view.")
                         }
                     }
                 }
@@ -219,7 +197,7 @@ struct LeadDetailView: View {
 
     @ViewBuilder
     private var locationSection: some View {
-        SectionCard(title: "Location", icon: "map") {
+        SectionCard(title: "Location", icon: "location") {
             VStack(alignment: .leading, spacing: 12) {
                 let addressLines: [String] = {
                     let lines = lead.location.formattedLines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
@@ -253,13 +231,23 @@ struct LeadDetailView: View {
                 Button {
                     openInAppleMaps()
                 } label: {
-                    Label("Open in Maps", systemImage: "map")
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        Text("Open in")
+                        Image("applemapsiconsvg")
+                            .resizable()
+                            .renderingMode(.original)
+                            .scaledToFit()
+                            .frame(height: 18)
+                            .offset(y: 1) // slight nudge down to align with text baseline
+                            .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(TBTheme.brand)
                 .controlSize(.large)
                 .clipShape(Capsule())
+                .accessibilityLabel("Open in Apple Maps")
                 .accessibilityHint("Opens Apple Maps for directions")
                 .zIndex(1)
             }
@@ -268,7 +256,7 @@ struct LeadDetailView: View {
 
     @ViewBuilder
     private func customerSection(posterIdentity: String?) -> some View {
-        SectionCard(title: "Customer", icon: "person.crop.circle") {
+        SectionCard(title: "Customer", icon: "person") {
             VStack(alignment: .leading, spacing: 8) {
                 NavigationLink {
                     PublicCustomerProfileView(identity: posterIdentity ?? "")
@@ -301,8 +289,10 @@ struct LeadDetailView: View {
                 .clipShape(Capsule())
                 .disabled(isOpeningChat)
 
-                // NEW: WhatsApp button (only if a phone number is available)
+                // NEW: “or” separator + WhatsApp button (only if a phone number is available)
                 if let phone = lead.contactPhone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    orSeparator
+
                     Button {
                         openWhatsApp(with: phone)
                     } label: {
@@ -313,7 +303,6 @@ struct LeadDetailView: View {
                                 .scaledToFit()
                                 .frame(width: 20, height: 20)
                             Text("Message in WhatsApp")
-                                .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -326,6 +315,25 @@ struct LeadDetailView: View {
                 }
             }
         }
+    }
+
+    // Small centered “or” with hairline dividers
+    private var orSeparator: some View {
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(Color.white.opacity(0.18))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+            Text("or")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(TBTheme.subtext)
+            Rectangle()
+                .fill(Color.white.opacity(0.18))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.vertical, 6)
+        .accessibilityLabel("or")
     }
 
     private func messageCustomer(posterIdentity: String?) async {
