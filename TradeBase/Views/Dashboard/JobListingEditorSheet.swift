@@ -35,6 +35,9 @@ struct JobListingEditorSheet: View {
     @State private var startDate: Date? = nil
     @State private var isUrgent: Bool = false
 
+    // NEW: phone (editor-only for now; not wired to store or leads)
+    @State private var phone: String = ""
+
     // Photos working copy
     @State private var photos: [URL] = []
     @State private var showingPhotoPicker = false
@@ -112,13 +115,13 @@ struct JobListingEditorSheet: View {
                                 .lineLimit(3...6)
 
                             // Category dropdown (native Menu + Picker)
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 12) {
                                 Text("Category")
-                                    .font(.footnote.weight(.semibold))
+                                    .font(.headline.weight(.semibold))
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    .padding(.top, 12) // unified top spacing
 
                                 Menu {
-                                    // Optional “Clear” at the top
                                     if category != nil {
                                         Button(role: .destructive) {
                                             category = nil
@@ -128,7 +131,6 @@ struct JobListingEditorSheet: View {
                                         Divider()
                                     }
 
-                                    // Native Picker inside Menu keeps selection in place
                                     Picker("Category", selection: Binding(get: {
                                         category ?? TradeType.allCases.first
                                     }, set: { newValue in
@@ -251,7 +253,6 @@ struct JobListingEditorSheet: View {
                                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                                             .stroke(TBTheme.offWhite.opacity(0.25), lineWidth: 1)
                                     )
-                                    // Always-on recenter button overlay
                                     .overlay(alignment: .bottomTrailing) {
                                         Button(action: recenterMap) {
                                             Image(systemName: "location.fill")
@@ -297,10 +298,11 @@ struct JobListingEditorSheet: View {
                             .pickerStyle(.segmented)
 
                             // Currency dropdown (matches wizard)
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 12) {
                                 Text("Currency")
-                                    .font(.footnote.weight(.semibold))
+                                    .font(.headline.weight(.semibold))
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    .padding(.top, 12) // extra breathing room from the segmented control
 
                                 Menu {
                                     Picker("Currency", selection: $currency) {
@@ -379,9 +381,8 @@ struct JobListingEditorSheet: View {
                                     .labelsHidden()
                                     .tint(TBTheme.brand)
                                     .onChange(of: startDate) { _, _ in
-                                        // Auto-dismiss shortly after a date is picked
                                         Task { @MainActor in
-                                            try? await Task.sleep(nanoseconds: 120_000_000) // 0.12s
+                                            try? await Task.sleep(nanoseconds: 120_000_000)
                                             isShowingDatePicker = false
                                         }
                                     }
@@ -392,6 +393,20 @@ struct JobListingEditorSheet: View {
                                 }
                                 .padding()
                                 .presentationBackground(.ultraThinMaterial)
+                            }
+
+                            // NEW: Phone number (editor-only)
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Phone")
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(TBTheme.offWhiteSecondary)
+                                    .padding(.top, 12) // unified spacing from the row above
+
+                                TextField("e.g. +44", text: $phone)
+                                    .textFieldStyle(TBTextFieldStyle())
+                                    .keyboardType(.phonePad)
+                                    .textContentType(.telephoneNumber)
+                                    .foregroundStyle(TBTheme.offWhite)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -418,22 +433,18 @@ struct JobListingEditorSheet: View {
                             .padding(.horizontal, 20)
                         }
 
-                        // Bottom spacing
                         Spacer().frame(height: 16)
                     }
                 }
-                // Make sure the scroll view doesn’t reveal default materials behind lists on some OS versions
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle(viewTitle)
             .navigationBarTitleDisplayMode(.inline)
-            // Keep toolbar visible but hide its background to avoid the grey bar
             .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarBackground(.hidden, for: .bottomBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                // Remove explicit Cancel; rely on native back chevron
                 ToolbarItem(placement: .confirmationAction) {
                     if showPublish {
                         Menu {
@@ -468,12 +479,9 @@ struct JobListingEditorSheet: View {
             if !didHydrateOnce {
                 hydrateFromListing()
                 didHydrateOnce = true
-                // Kick an initial geocode for the current address
                 scheduleGeocode()
-                // Initialize camera to current region
                 camera = .region(region)
             }
-            // Keyboard visibility (we keep this to adjust layout if you want to react elsewhere)
             keyboardObserver.start { visible in
                 withAnimation(.easeInOut(duration: 0.25)) {
                     isKeyboardVisible = visible
@@ -484,14 +492,11 @@ struct JobListingEditorSheet: View {
             cancelGeocoding()
             keyboardObserver.stop()
         }
-        // Handle PhotosPicker results
         .onChange(of: photoPickerItems) { _, newItems in
             guard !newItems.isEmpty else { return }
             Task { await importPickedPhotos(newItems) }
         }
     }
-
-    // MARK: - Section header
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
@@ -500,8 +505,6 @@ struct JobListingEditorSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
     }
-
-    // MARK: - Hydration / Build
 
     private func hydrateFromListing() {
         title = listing.title
@@ -517,6 +520,7 @@ struct JobListingEditorSheet: View {
         startDate = listing.startDate
         isUrgent = listing.isUrgent
         photos = listing.photos
+        phone = listing.contactPhone ?? ""
     }
 
     private func buildUpdatedListing(statusOverride: JobListingStatus? = nil) -> JobListing {
@@ -538,7 +542,7 @@ struct JobListingEditorSheet: View {
 
     // MARK: - Photos
 
-    private var addPhotosButton: some View {
+    private var addPhotosButton: some View { /* unchanged */ 
         PhotosPicker(
             selection: $photoPickerItems,
             maxSelectionCount: 12,
@@ -577,7 +581,7 @@ struct JobListingEditorSheet: View {
         .accessibilityLabel("Add photos")
     }
 
-    private func thumbnailView(for url: URL) -> some View {
+    private func thumbnailView(for url: URL) -> some View { /* unchanged */ 
         Group {
             if let img = PhotoService.shared.thumbnail(for: url, targetSize: CGSize(width: 200, height: 200)) {
                 Image(uiImage: img)
@@ -597,18 +601,12 @@ struct JobListingEditorSheet: View {
         }
     }
 
-    private func removePhoto(_ url: URL) {
-        // Remove from UI list immediately
-        photos.removeAll { $0 == url }
-        // Best-effort delete the file (optional; comment out if you want to keep files referenced elsewhere)
-        PhotoService.shared.delete(url)
-    }
+    private func removePhoto(_ url: URL) { photos.removeAll { $0 == url }; PhotoService.shared.delete(url) }
 
-    private func importPickedPhotos(_ items: [PhotosPickerItem]) async {
+    private func importPickedPhotos(_ items: [PhotosPickerItem]) async { /* unchanged */ 
         photoAddError = nil
         isAddingPhotos = true
         defer { isAddingPhotos = false }
-
         var newURLs: [URL] = []
         for item in items {
             do {
@@ -617,15 +615,10 @@ struct JobListingEditorSheet: View {
                         newURLs.append(url)
                     }
                 }
-            } catch {
-                // Ignore individual item errors; collect a generic message
-                photoAddError = "Some photos couldn’t be added."
-            }
+            } catch { photoAddError = "Some photos couldn’t be added." }
         }
         if !newURLs.isEmpty {
-            // Append and ensure uniqueness
             let combined = photos + newURLs
-            // Deduplicate by file path
             var seen: Set<String> = []
             photos = combined.filter { url in
                 let key = url.path
@@ -634,10 +627,7 @@ struct JobListingEditorSheet: View {
                 return true
             }
         }
-        // Clear selection binding
-        await MainActor.run {
-            photoPickerItems = []
-        }
+        await MainActor.run { photoPickerItems = [] }
     }
 
     private func postItTapped() {
@@ -646,8 +636,6 @@ struct JobListingEditorSheet: View {
         onPublish(updated)
         dismiss()
     }
-
-    // MARK: - Helpers
 
     private func formattedDate(_ date: Date?) -> String {
         guard let d = date else { return "Select" }
@@ -658,20 +646,15 @@ struct JobListingEditorSheet: View {
     }
 
     private func recenterMap() {
-        // Prefer the locatedCoordinate from geocoding; fallback to current region center.
         let targetCoord = locatedCoordinate ?? region.center
         let targetRegion = MKCoordinateRegion(
             center: targetCoord,
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
         )
         region = targetRegion
-        withAnimation(.easeInOut(duration: 0.25)) {
-            camera = .region(targetRegion)
-        }
+        withAnimation(.easeInOut(duration: 0.25)) { camera = .region(targetRegion) }
     }
 }
-
-// MARK: - CurrencyAmountField (identical styling to wizard)
 
 private struct CurrencyAmountField: View {
     let title: String
@@ -679,7 +662,6 @@ private struct CurrencyAmountField: View {
     var currencyCode: String
 
     @State private var text: String = ""
-    // Keep a plain formatter for Decimal -> String to avoid locale surprises
     private let numberFormatter: NumberFormatter = {
         let nf = NumberFormatter()
         nf.numberStyle = .decimal
@@ -703,9 +685,7 @@ private struct CurrencyAmountField: View {
                         .replacingOccurrences(of: symbol, with: "")
                         .replacingOccurrences(of: " ", with: "")
                     text = cleaned
-                    if let dec = Decimal(string: cleaned) {
-                        value = dec
-                    }
+                    if let dec = Decimal(string: cleaned) { value = dec }
                 }
             ))
             .keyboardType(.decimalPad)
@@ -720,64 +700,46 @@ private struct CurrencyAmountField: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(TBTheme.offWhite.opacity(0.25), lineWidth: 1)
         )
-        // Initialize and keep text in sync when external inputs change
         .onAppear { syncTextFromValue() }
         .onChange(of: value) { _, _ in syncTextFromValueIfNeeded() }
-        .onChange(of: currencyCode) { _, _ in
-            // Keep raw numeric text; symbol is separate label.
-            syncTextFromValueIfNeeded()
-        }
+        .onChange(of: currencyCode) { _, _ in syncTextFromValueIfNeeded() }
     }
 
     private func syncTextFromValue() {
         if let s = numberFormatter.string(from: value as NSDecimalNumber) {
             text = s
         } else {
-            // Fallback to plain NSNumber formatting
-            let ns = value as NSNumber
-            text = ns.stringValue
+            text = (value as NSNumber).stringValue
         }
     }
 
     private func syncTextFromValueIfNeeded() {
-        // Only update if the current text does not parse to the same Decimal.
         if let current = Decimal(string: text) {
-            if current != value {
-                syncTextFromValue()
-            }
+            if current != value { syncTextFromValue() }
         } else {
             syncTextFromValue()
         }
     }
 }
 
-// MARK: - Geocoding helpers (ported from JobPostingWizard)
-
 private extension JobListingEditorSheet {
     func scheduleGeocode() {
         cancelGeocoding()
-
         let query = buildPostalAddressString()
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             geocodeError = nil
             locatedCoordinate = nil
             return
         }
-
         let token = UUID()
         geocodeRequestID = token
-
         geocodeTask = Task { @MainActor in
             guard !Task.isCancelled, geocodeRequestID == token else { return }
             isGeocoding = true
             geocodeError = nil
-
-            // Debounce ~400ms
             do { try await Task.sleep(nanoseconds: 400_000_000) } catch { }
-
             guard !Task.isCancelled, geocodeRequestID == token else { return }
             await geocodeCurrentAddress(for: token)
-
             guard !Task.isCancelled, geocodeRequestID == token else { return }
             isGeocoding = false
         }
@@ -800,17 +762,12 @@ private extension JobListingEditorSheet {
     @MainActor
     func geocodeCurrentAddress(for token: UUID) async {
         guard !Task.isCancelled, geocodeRequestID == token else { return }
-
         let query = buildPostalAddressString()
         guard !query.isEmpty else { return }
-
         let geocoder = CLGeocoder()
-
         do {
             let placemarks = try await geocoder.geocodeAddressString(query, in: nil)
-
             guard !Task.isCancelled, geocodeRequestID == token else { return }
-
             guard let first = placemarks.first, let loc = first.location else {
                 geocodeError = "We couldn’t find this address yet."
                 locatedCoordinate = nil
@@ -824,7 +781,6 @@ private extension JobListingEditorSheet {
                 camera = .region(region)
             }
         } catch is CancellationError {
-            // ignored
         } catch {
             guard !Task.isCancelled, geocodeRequestID == token else { return }
             geocodeError = "Address lookup failed. Please refine it."
@@ -832,4 +788,3 @@ private extension JobListingEditorSheet {
         }
     }
 }
-
