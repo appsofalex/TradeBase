@@ -598,6 +598,10 @@ struct ChatView: View {
             }
         }
 
+        // New: contactPhone
+        let phoneRaw = (record["contactPhone"] as? String) ?? ""
+        let contactPhone = phoneRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : phoneRaw
+
         return MarketplaceLead(
             id: id,
             title: title,
@@ -614,7 +618,8 @@ struct ChatView: View {
             createdAt: createdAt,
             updatedAt: updatedAt,
             posterIdentity: posterIdentity,
-            posterAppID: posterAppID
+            posterAppID: posterAppID,
+            contactPhone: contactPhone
         )
     }
 

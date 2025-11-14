@@ -3,7 +3,7 @@
 //  TradeBase
 //
 //  Canonical model for job leads fetched from CloudKit (Public DB, JobLead records).
-//  This struct is a pure data model. All CloudKit I/O is implemented in CloudKitJobLeadService.
+//  Single authoritative definition (Identifiable, Hashable, Codable).
 //
 
 import Foundation
@@ -38,9 +38,14 @@ struct MarketplaceLead: Identifiable, Hashable, Codable {
     var updatedAt: Date
 
     // Poster metadata (optional)
-    var posterIdentity: String?
-    var posterAppID: UUID?
+    // e.g. "email:john@doe.com" or "google:abc123"
+    var posterIdentity: String? = nil
+    // Optional app-level UUID for the poster (if available)
+    var posterAppID: UUID? = nil
 
-    // MARK: - Hashable/Equatable default synthesis is fine
-    // MARK: - Codable default synthesis is fine (Address, TradeType, JobBudgetType are Codable)
+    // Contact
+    // Optional phone number provided by the customer when posting the job.
+    // Used for external WhatsApp handoff in LeadDetailView.
+    var contactPhone: String? = nil
 }
+

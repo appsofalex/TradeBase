@@ -30,19 +30,17 @@ struct CustomerHomeView: View {
             ZStack {
                 TBTheme.gradient.ignoresSafeArea()
 
+                // Top header stays at the top
                 VStack(alignment: .leading, spacing: 0) {
-                    // Match Community/Profile: left-aligned bubbly header
                     Text("Home").tbLargeHeader()
-
-                    // Center the CTA block vertically within remaining space
-                    VStack {
-                        Spacer()
-                        ctaBlock
-                            .padding(.horizontal, 20)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Spacer(minLength: 0)
                 }
+
+                // Center the CTA segment, then raise it slightly to match DashboardView spacing
+                ctaBlock
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .offset(y: -24)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -196,6 +194,12 @@ struct CustomerHomeView: View {
 
     private var ctaBlock: some View {
         VStack(spacing: 10) {
+            Image(systemName: "bubble.and.pencil")
+                .font(.system(size: 52, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(TBTheme.brand)
+                .padding(.bottom, 4)
+
             Text("Ready to get started?")
                 .font(.title2.bold())
                 .foregroundStyle(TBTheme.offWhite)
@@ -230,7 +234,7 @@ struct CustomerHomeView: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.vertical, 10)
                 .padding(.horizontal, 16)
-                .background(Capsule().fill(.ultraThinMaterial)) // pill to match curvature
+                .background(Capsule().fill(.ultraThinMaterial))
                 .overlay(
                     Capsule().stroke(Color.white.opacity(0.15))
                 )

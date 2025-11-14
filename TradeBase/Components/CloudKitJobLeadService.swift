@@ -46,6 +46,9 @@ actor CloudKitJobLeadService {
         static let startDate = "startDate"
         static let isUrgent = "isUrgent"
         static let posterAppID = "posterAppID"
+
+        // New: contact phone (used for WhatsApp handoff)
+        static let contactPhone = "contactPhone"
     }
 
     // MARK: - CK
@@ -109,6 +112,9 @@ actor CloudKitJobLeadService {
         record[Field.startDate] = listing.startDate as CKRecordValue?
         record[Field.isUrgent] = NSNumber(value: listing.isUrgent)
         record[Field.posterAppID] = posterAppID.uuidString as CKRecordValue
+
+        // New: contact phone from listing
+        record[Field.contactPhone] = (listing.contactPhone ?? "") as CKRecordValue
 
         if photoFileURLs.isEmpty {
             record[Field.photoAssets] = nil
@@ -180,7 +186,7 @@ actor CloudKitJobLeadService {
         print("[CKLeads] updateStatus OK record=\(saved.recordID.recordName) -> \(newStatus.rawValue)")
     }
 
-    // MARK: - Mapping (unchanged)
+    // MARK: - Mapping (updated)
     private func mapAndSort(records: [CKRecord], sortClientSideIfNeeded: Bool) async throws -> [MarketplaceLead] {
         var leads: [MarketplaceLead] = []
         leads.reserveCapacity(records.count)
@@ -238,6 +244,10 @@ actor CloudKitJobLeadService {
             }
         }
 
+        // New: contact phone (empty string stored means nil)
+        let phoneRaw = (record[Field.contactPhone] as? String) ?? ""
+        let contactPhone = phoneRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : phoneRaw
+
         return MarketplaceLead(
             id: id,
             title: title,
@@ -254,7 +264,8 @@ actor CloudKitJobLeadService {
             createdAt: createdAt,
             updatedAt: updatedAt,
             posterIdentity: posterIdentity,
-            posterAppID: posterAppID
+            posterAppID: posterAppID,
+            contactPhone: contactPhone
         )
     }
 

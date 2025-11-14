@@ -7,10 +7,21 @@
 
 import SwiftUI
 
+// MARK: - Environment key to allow child views to switch the tradesperson tabs.
+struct TradesTabSwitcherKey: EnvironmentKey {
+    static let defaultValue: (RootView.Tab) -> Void = { _ in }
+}
+extension EnvironmentValues {
+    var switchTradesTab: (RootView.Tab) -> Void {
+        get { self[TradesTabSwitcherKey.self] }
+        set { self[TradesTabSwitcherKey.self] = newValue }
+    }
+}
+
 struct RootView: View {
     @Environment(AppState.self) private var state
 
-    fileprivate enum Tab: Hashable {
+    enum Tab: Hashable {
         case jobs, leads, community, profile
     }
     @State private var selectedTab: Tab = .jobs
@@ -53,6 +64,10 @@ struct RootView: View {
             shouldShowCustomerSetup: shouldShowCustomerSetup,
             directionalTransition: directionalTransition
         )
+        // Inject a working tab switcher at the RootView level too (optional)
+        .environment(\.switchTradesTab, { tab in
+            selectedTab = tab
+        })
         .applyRootModifiers(
             state: state,
             selectedTab: $selectedTab,
@@ -171,8 +186,15 @@ private struct RootContent: View {
     }
 
     private var tradespersonTabView: some View {
-        TabView(selection: $selectedTab) {
+        // Define a real switcher that writes to the TabView selection.
+        let switcher: (RootView.Tab) -> Void = { tab in
+            selectedTab = tab
+        }
+
+        return TabView(selection: $selectedTab) {
+            // Inject the working switcher into DashboardView so the CTA can switch to Leads.
             DashboardView()
+                .environment(\.switchTradesTab, switcher)
                 .tabItem { Label("Jobs", systemImage: "calendar.badge.clock") }
                 .tag(RootView.Tab.jobs)
 

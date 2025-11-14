@@ -12,6 +12,9 @@ import EventKitUI
 struct DashboardView: View {
     @Environment(\.appState) private var state
     @Environment(\.customerJobListingStore) private var store
+    // New: tab switcher injected from RootView
+    @Environment(\.switchTradesTab) private var switchTab
+
     @State private var eventToEdit: Job? = nil
     @State private var calendarAccessDenied = false
 
@@ -90,8 +93,8 @@ struct DashboardView: View {
                                     Circle()
                                         .fill(Color.red)
                                         .frame(width: 9, height: 9)
-                                        .padding(.top, -2)      // move up into the gap
-                                        .padding(.trailing, -4) // move right toward the ring, but not touching
+                                        .padding(.top, -2)
+                                        .padding(.trailing, -4)
                                         .zIndex(1)
                                         .accessibilityHidden(true)
                                 }
@@ -112,6 +115,10 @@ struct DashboardView: View {
         // Best-effort: ensure unread count is up to date so the red dot appears promptly
         .task {
             await state.refreshUnreadCount()
+            // Diagnostics: confirm role and switcher presence
+            let role = state.selectedRole.map { "\($0)" } ?? "nil"
+            let isNoOp = isSwitcherNoOp()
+            print("[DashboardView] task: role=\(role), switcherNoOp=\(isNoOp)")
         }
         .sheet(item: $eventToEdit) { job in
             EventEditView(job: job) { action in
@@ -145,11 +152,9 @@ struct DashboardView: View {
 
         // Map JobListing -> Job (best-effort mapping for display)
         let jobs: [Job] = scheduledListings.compactMap { (listing: JobListing) -> Job? in
-            // Require a startDate to be schedulable; otherwise skip
             guard let start = listing.startDate else { return nil }
             let trade = listing.category ?? .generalBuilder
             let addr = listing.location
-            // Approximate pay from budgetMin if available
             let payAmount: Decimal = listing.budgetMin ?? 0
             let money = Money(amount: payAmount, currency: listing.currency)
             return Job(
@@ -171,11 +176,29 @@ struct DashboardView: View {
         if jobs.isEmpty {
             // Wrap empty state in ScrollView so pull-to-refresh works
             ScrollView {
-                EmptyStateView(title: "No jobs lined up yet",
-                               subtitle: "Look for extra work in the Leads tab.",
-                               icon: "calendar.badge.exclamationmark")
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 60)
+                VStack(spacing: 16) {
+                    EmptyStateView(title: "No jobs lined up yet",
+                                   subtitle: "Look for extra work in the Leads tab.",
+                                   icon: "calendar.badge.exclamationmark")
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
+
+                    // CTA: tap to switch to Leads tab
+                    Button {
+                        let isNoOp = isSwitcherNoOp()
+                        print("[DashboardView] View Leads tapped. switcherNoOp=\(isNoOp). Requesting tab=.leads")
+                        switchTab(.leads)
+                    } label: {
+                        Text("View Leads")
+                            .font(.headline)
+                            .padding(.vertical, 14)
+                            .frame(maxWidth: .infinity)
+                            .background(Capsule().fill(TBTheme.brand))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                }
             }
             .refreshable { await state.load() }
         } else {
@@ -240,6 +263,16 @@ struct DashboardView: View {
             autoHideTask = nil
         }
     }
+
+    // MARK: - Diagnostics
+
+    private func isSwitcherNoOp() -> Bool {
+        // Compare the environment closure reference to the default value reference.
+        // If they’re the same object, it means RootView didn’t inject a real switcher into this instance.
+        let current = Environment(\.switchTradesTab).wrappedValue as AnyObject
+        let def = TradesTabSwitcherKey.defaultValue as AnyObject
+        return current === def
+    }
 }
 
 // MARK: - SwiftUI wrapper for EKEventEditViewController
@@ -279,3 +312,4 @@ private struct EventEditView: UIViewControllerRepresentable {
         }
     }
 }
+

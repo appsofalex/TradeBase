@@ -82,7 +82,9 @@ struct JobListingEditorSheet: View {
             case .range: return budgetMin != nil && budgetMax != nil
             }
         }()
-        return hasBasics && hasLocation && hasBudget
+        // New: require a valid international phone number before posting/saving
+        let hasValidPhone = isPhoneValidE164(phone)
+        return hasBasics && hasLocation && hasBudget && hasValidPhone
     }
 
     init(listing: JobListing,
@@ -402,11 +404,18 @@ struct JobListingEditorSheet: View {
                                     .foregroundStyle(TBTheme.offWhiteSecondary)
                                     .padding(.top, 12) // unified spacing from the row above
 
-                                TextField("e.g. +44", text: $phone)
+                                // No placeholder; prefilled with +44 on hydrate
+                                TextField("", text: $phone)
                                     .textFieldStyle(TBTextFieldStyle())
                                     .keyboardType(.phonePad)
                                     .textContentType(.telephoneNumber)
                                     .foregroundStyle(TBTheme.offWhite)
+                                    .onChange(of: phone) { _, newValue in
+                                        // Keep the leading +44 preset if user clears everything
+                                        if newValue.isEmpty {
+                                            phone = "+44"
+                                        }
+                                    }
                             }
                         }
                         .padding(.horizontal, 20)
@@ -520,7 +529,9 @@ struct JobListingEditorSheet: View {
         startDate = listing.startDate
         isUrgent = listing.isUrgent
         photos = listing.photos
-        phone = listing.contactPhone ?? ""
+        // If there is an existing phone, keep it; otherwise seed "+44"
+        let existing = listing.contactPhone?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        phone = existing.isEmpty ? "+44" : existing
     }
 
     private func buildUpdatedListing(statusOverride: JobListingStatus? = nil) -> JobListing {
@@ -536,6 +547,8 @@ struct JobListingEditorSheet: View {
         updated.startDate = startDate
         updated.isUrgent = isUrgent
         updated.photos = photos
+        // NEW: persist phone back to the model so CloudKit upsert can mirror it
+        updated.contactPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : phone.trimmingCharacters(in: .whitespacesAndNewlines)
         if let statusOverride { updated.status = statusOverride }
         return updated
     }
@@ -786,5 +799,27 @@ private extension JobListingEditorSheet {
             geocodeError = "Address lookup failed. Please refine it."
             locatedCoordinate = nil
         }
+    }
+
+    // MARK: - Phone validation (E.164 style)
+    // Accepts "+<digits>" where total digits count is 8...15.
+    func isPhoneValidE164(_ input: String) -> Bool {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.first == "+" else { return false }
+        // Keep only + and digits for validation
+        var cleaned = "+"
+        for (i, ch) in trimmed.enumerated() {
+            if ch.isNumber { cleaned.append(ch) }
+            else if ch == "+", i == 0 { continue } // already appended
+            // ignore spaces, dashes, parentheses, etc.
+        }
+        // Must be "+" followed by digits only
+        guard cleaned.count > 1 else { return false }
+        // Digit count (excluding '+')
+        let digits = cleaned.dropFirst()
+        let count = digits.count
+        guard (8...15).contains(count) else { return false }
+        // All digits check (already filtered)
+        return digits.allSatisfy { $0.isNumber }
     }
 }

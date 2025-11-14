@@ -25,6 +25,9 @@ struct LeadDetailView: View {
     // NEW: fallback alert when identity is missing
     @State private var showIdentityUnavailableAlert = false
 
+    // NEW: WhatsApp error alert
+    @State private var whatsappError: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -118,6 +121,15 @@ struct LeadDetailView: View {
                     .ignoresSafeArea()
             }
         }
+        // WhatsApp error
+        .alert("Can’t open WhatsApp", isPresented: Binding(
+            get: { whatsappError != nil },
+            set: { if !$0 { whatsappError != nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(whatsappError ?? "Please check the phone number or install WhatsApp.")
+        }
     }
 
     @ViewBuilder
@@ -200,7 +212,7 @@ struct LeadDetailView: View {
             } else {
                 Text("Start date: Not specified")
             }
-            Text(lead.createdAt.formatted(date: .abbreviated, time: .shortened))
+            Text("Posted: \(lead.createdAt.formatted(date: .abbreviated, time: .shortened))")
                 .foregroundStyle(.secondary)
         }
     }
@@ -288,6 +300,30 @@ struct LeadDetailView: View {
                 .controlSize(.large)
                 .clipShape(Capsule())
                 .disabled(isOpeningChat)
+
+                // NEW: WhatsApp button (only if a phone number is available)
+                if let phone = lead.contactPhone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        openWhatsApp(with: phone)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image("whatsappwhiteicon")
+                                .resizable()
+                                .renderingMode(.original)
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                            Text("Message in WhatsApp")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.145, green: 0.827, blue: 0.400)) // #25D366
+                    .controlSize(.large)
+                    .clipShape(Capsule())
+                    .accessibilityLabel("Message in WhatsApp")
+                    .accessibilityHint("Opens WhatsApp to chat with the customer")
+                }
             }
         }
     }
@@ -353,6 +389,46 @@ struct LeadDetailView: View {
                 self.isOpeningChat = false
             }
         }
+    }
+
+    // MARK: - WhatsApp
+
+    private func openWhatsApp(with rawPhone: String) {
+        let normalized = normalizePhoneForWhatsApp(rawPhone)
+        guard !normalized.isEmpty else {
+            whatsappError = "This job doesn’t include a valid phone number."
+            return
+        }
+
+        // Try the native scheme first (requires LSApplicationQueriesSchemes = whatsapp)
+        if let schemeURL = URL(string: "whatsapp://send?phone=\(normalized)"),
+           UIApplication.shared.canOpenURL(schemeURL) {
+            UIApplication.shared.open(schemeURL, options: [:], completionHandler: nil)
+            return
+        }
+
+        // Fallback: wa.me link via Safari
+        if let httpsURL = URL(string: "https://wa.me/\(normalized)") {
+            UIApplication.shared.open(httpsURL, options: [:], completionHandler: nil)
+        } else {
+            whatsappError = "Couldn’t form a WhatsApp link for this number."
+        }
+    }
+
+    private func normalizePhoneForWhatsApp(_ s: String) -> String {
+        // Keep leading + and digits only
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = ""
+        for (i, ch) in trimmed.enumerated() {
+            if ch.isNumber { result.append(ch) }
+            else if ch == "+", i == 0 { result.append(ch) }
+        }
+        // WhatsApp expects E.164 (e.g., +447... or 447...).
+        // For wa.me, drop the plus.
+        if result.hasPrefix("+") {
+            return result.replacingOccurrences(of: "+", with: "")
+        }
+        return result
     }
 
     private func budgetSummary() -> String {
@@ -426,7 +502,7 @@ struct LeadDetailView: View {
                let jpg = img.jpegData(compressionQuality: 0.95) {
                 try jpg.write(to: dest, options: [.atomic])
             } else {
-                try fm.copyItem(at: original, to: dest)
+                try FileManager.default.copyItem(at: original, to: dest)
             }
             var rvs = URLResourceValues()
             rvs.isExcludedFromBackup = true
@@ -483,4 +559,3 @@ private struct QLPreviewControllerWrapper: UIViewControllerRepresentable {
         }
     }
 }
-
