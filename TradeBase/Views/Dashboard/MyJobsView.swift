@@ -77,8 +77,7 @@ struct MyJobsView: View {
                         }
                     }
 
-                    // For drafts, schedule a reminder to finish later
-                    Task { await NotificationsScheduler.shared.scheduleDraftReminder(for: updated) }
+                    // Removed: draft reminder scheduling
                     editingListing = nil
                 },
                 onPublish: { updated in
@@ -113,11 +112,7 @@ struct MyJobsView: View {
                         }
                     }
 
-                    // On publish, schedule a start reminder (if date present)
-                    Task {
-                        await state.requestNotificationPermissionsIfNeeded()
-                        await NotificationsScheduler.shared.scheduleStartReminder(for: updated)
-                    }
+                    // Removed: permission request + start reminder scheduling
                     editingListing = nil
                 }
             )
@@ -224,7 +219,7 @@ struct MyJobsView: View {
                     showPublish: true,
                     onSave: { updated in
                         store.upsert(updated)
-                        Task { await NotificationsScheduler.shared.scheduleDraftReminder(for: updated) }
+                        // Removed: draft reminder scheduling
                     },
                     onPublish: { updated in
                         store.upsert(updated)
@@ -250,10 +245,7 @@ struct MyJobsView: View {
                                 // best-effort
                             }
                         }
-                        Task {
-                            await state.requestNotificationPermissionsIfNeeded()
-                            await NotificationsScheduler.shared.scheduleStartReminder(for: updated)
-                        }
+                        // Removed: permission request + start reminder scheduling
                     },
                     viewTitle: "Post Job"
                 )
@@ -455,7 +447,6 @@ struct MyJobsView: View {
         switch selected {
         case .draft:
             Button(role: .destructive) {
-                NotificationsScheduler.shared.cancelAllForListing(id: job.id)
                 store.delete(id: job.id)
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -514,7 +505,6 @@ struct MyJobsView: View {
             .tint(TBTheme.brand)
 
             Button(role: .destructive) {
-                NotificationsScheduler.shared.cancelAllForListing(id: job.id)
                 store.delete(id: job.id)
             } label: {
                 Label("Delete", systemImage: "trash")

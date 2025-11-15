@@ -12,7 +12,6 @@ import GoogleSignIn
 import AuthenticationServices
 import UIKit
 import CloudKit
-import UserNotifications
 import CoreLocation
 
 // Back-compat: legacy code references UserRole; alias it to AppState.Role
@@ -824,19 +823,9 @@ final class AppState {
         return convo
     }
 
-    // MARK: - Notifications permission helper (used by CustomerHomeView)
+    // MARK: - Notifications permission helper (removed behavior)
     func requestNotificationPermissionsIfNeeded() async {
-        let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-        switch settings.authorizationStatus {
-        case .notDetermined:
-            _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
-        case .denied, .authorized, .provisional, .ephemeral:
-            // No-op here; caller can decide how to handle denied/provisional if needed.
-            break
-        @unknown default:
-            break
-        }
+        // No-op: notifications removed
     }
 } // <-- Close AppState here
 
@@ -909,3 +898,4 @@ actor DefaultCloudProfileStore: CloudProfileStore {
         // No-op in default stub
     }
 }
+

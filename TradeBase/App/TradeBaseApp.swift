@@ -100,7 +100,7 @@ struct TradeBaseApp: App {
                 }
                 .onAppear {
                     appDelegate.state = state
-                    UIApplication.shared.registerForRemoteNotifications()
+                    // Removed: UIApplication.shared.registerForRemoteNotifications()
                 }
                 .onChange(of: state.selectedRole) {
                     let identity = state.currentAuthIdentity()

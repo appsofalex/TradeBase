@@ -215,8 +215,21 @@ struct CustomerSettingsView: View {
     }
 
     private func preferencesSection(@Bindable bindableState: AppState) -> some View {
-        Section("Preferences") {
-            Toggle(isOn: $bindableState.notificationsEnabled) {
+        // Intercept ON -> show upsell and keep the toggle OFF
+        let notificationsBinding = Binding<Bool>(
+            get: { bindableState.notificationsEnabled },
+            set: { newValue in
+                if newValue {
+                    showingPremiumUpsell = true
+                    bindableState.notificationsEnabled = false
+                } else {
+                    bindableState.notificationsEnabled = false
+                }
+            }
+        )
+
+        return Section("Preferences") {
+            Toggle(isOn: notificationsBinding) {
                 Label("Notifications", systemImage: "bell.badge")
             }
             Picker(selection: $bindableState.appearanceMode) {

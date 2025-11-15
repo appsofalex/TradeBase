@@ -22,7 +22,7 @@ struct RolePickerView: View {
 
                 VStack(spacing: 16) {
                     roleButton(
-                        title: "I’m a tradesperson",
+                        title: "Tradesperson",
                         subtitle: "Win more work, stay organised, grow faster",
                         systemImage: "wrench.and.screwdriver.fill"
                     ) {
@@ -30,9 +30,9 @@ struct RolePickerView: View {
                     }
 
                     roleButton(
-                        title: "I need a tradesperson",
+                        title: "Customer",
                         subtitle: "Describe the job, get quotes, hire fast",
-                        systemImage: "person.fill.questionmark"
+                        systemImage: "person.fill"
                     ) {
                         state.selectedRole = .customer
                     }
@@ -69,4 +69,3 @@ struct RolePickerView: View {
         .buttonStyle(.plain)
     }
 }
-

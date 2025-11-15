@@ -121,11 +121,21 @@ struct CustomerHomeView: View {
                             showPublish: true,
                             onSave: { updated in
                                 store.upsert(updated)
-                                Task { await NotificationsScheduler.shared.scheduleDraftReminder(for: updated) }
+                                // Removed: draft reminder scheduling
                             },
                             onPublish: { updated in
+                                // 1) Persist locally and mark as posted
                                 store.upsert(updated)
                                 store.publish(id: updated.id)
+
+                                // 2) Immediately jump to My Jobs -> Posted
+                                Task { @MainActor in
+                                    self.shouldNavigateToPostJob = false
+                                    state.preferredMyJobsStatus = .active
+                                    state.navigateToMyJobsSignal += 1
+                                }
+
+                                // 3) Mirror to CloudKit (best-effort)
                                 Task {
                                     let identity = state.currentAuthIdentity()
                                     let posterAppID = state.profile.id
@@ -144,10 +154,7 @@ struct CustomerHomeView: View {
                                         // best-effort
                                     }
                                 }
-                                Task {
-                                    await state.requestNotificationPermissionsIfNeeded()
-                                    await NotificationsScheduler.shared.scheduleStartReminder(for: updated)
-                                }
+                                // Removed: permission request + start reminder scheduling
                             },
                             viewTitle: "Post Job"
                         )
@@ -285,3 +292,4 @@ struct CustomerHomeView: View {
         }
     }
 }
+
