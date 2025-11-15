@@ -11,21 +11,14 @@ import CloudKit
 import UIKit
 import Observation
 
+@MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
     weak var state: AppState?
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { }
+
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { }
     
-    struct TradeBaseApp: App {
-      var body: some Scene {
-        WindowGroup {
-          RootView()
-            .preferredColorScheme(.dark)
-        }
-      }
-    }
-
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable : Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
@@ -65,8 +58,6 @@ struct TradeBaseApp: App {
                 .environment(\.appState, state)
                 .environment(\.customerJobListingStore, customerListings)
                 .task {
-                    // Auth and role are already restored synchronously in AppState.init.
-                    // Now hydrate data and subscriptions.
                     do {
                         await state.load()
                         await state.ensureCommunitySubscription(city: nil as String?)
@@ -113,4 +104,3 @@ struct TradeBaseApp: App {
         }
     }
 }
-

@@ -146,13 +146,10 @@ final class AppState {
     var navigateToMyJobsSignal: Int = 0
 
     // Messaging placeholders referenced by views (lightweight so UI compiles)
-    // Removed nested Conversation and Message in favor of shared models from MessagingModels.swift
-
     var conversations: [Conversation] = []
     var messagesCache: [String: [Message]] = [:]
 
     // Leads local state
-    // Backing store as strings for compatibility; helpers bridge UUID<->String.
     var savedLeadIDs: [String] = []
     var hiddenLeadIDs: [String] = []
 
@@ -200,7 +197,7 @@ final class AppState {
         didSet { defaults.set(appearanceMode.rawValue, forKey: appearanceModeKey) }
     }
 
-    // MARK: - Location filter for Leads (needed by LeadsListView and LeadsLocationPickerSheet)
+    // MARK: - Location filter for Leads
 
     struct LeadsSearchLocation: Equatable, Hashable {
         var displayName: String
@@ -224,25 +221,17 @@ final class AppState {
         postcode: nil
     )
 
-    // Allow UI to prompt/fill location if needed. For now this is a no-op placeholder.
     func promptAndAutofillLeadsLocationIfNeeded() async {
-        // In the future, you could request location permission and set leadsSearchLocation
-        // based on the user's current city/postcode. Leaving as no-op keeps callers happy.
+        // Placeholder: no-op
     }
 
     // MARK: - Services
 
-    // CloudKit container used by various features
     let cloudKitContainer = CKContainer(identifier: "iCloud.com.AlexCo.TradeBase")
 
-    // Concrete services
     let cloudProfileStore: CloudProfileStore
     let jobLeadService: JobLeadService
-
-    // New: Messaging service used by Chat/Archived views
     let messagingService: MessagingService
-
-    // New: Community service used by CommunitiesView and AppState+Community
     let communityService: CommunityService
 
     // Public profile store adapter exposed to UI
@@ -253,9 +242,7 @@ final class AppState {
             self.impl = CloudKitPublicProfileStore(containerIdentifier: containerIdentifier)
         }
 
-        // Map AppState.UserProfile (private) into public fields and upsert
         func upsert(from profile: AppState.UserProfile, identity: String) async throws {
-            // For now, pass through to underlying store; it accepts UserProfile already
             try await impl.upsert(from: profile, identity: identity)
         }
 
@@ -264,7 +251,6 @@ final class AppState {
         }
 
         func fetch(identity: String) async throws -> PublicUserProfile {
-            // Ask the underlying store for a PublicUserProfile; if none, synthesize a minimal one.
             if let publicProfile = try await impl.fetch(identity: identity) {
                 return publicProfile
             } else {
@@ -280,16 +266,17 @@ final class AppState {
     private var messagingListenerTask: Task<Void, Never>? = nil
 
     func startMessagingListeners() {
-        // Cancel any existing listener to avoid duplicates
         messagingListenerTask?.cancel()
         guard let me = currentAuthIdentity() else { return }
         messagingListenerTask = Task { [weak self] in
             guard let self else { return }
-            // Ensure push subscriptions if backend supports it
-            try? await self.messagingService.ensureSubscriptions(for: me)
-            // Listen to conversations and keep unread badge up to date
-            for await _ in self.messagingService.observeConversations(for: me) {
-                await self.refreshUnreadCount()
+            do {
+                try await self.messagingService.ensureSubscriptions(for: me)
+                for try await _ in self.messagingService.observeConversations(for: me) {
+                    await self.refreshUnreadCount()
+                }
+            } catch {
+                // Swallow stream/observer failures; listeners will be restarted on next app event
             }
         }
     }
@@ -307,32 +294,10 @@ final class AppState {
         messagingService: MessagingService? = nil,
         communityService: CommunityService? = nil
     ) {
-        // Prefer provided implementations; otherwise build CloudKit-backed defaults.
-        if let cps = cloudProfileStore {
-            self.cloudProfileStore = cps
-        } else {
-            self.cloudProfileStore = CloudKitProfileStore(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
-        }
-
-        if let jls = jobLeadService {
-            self.jobLeadService = jls
-        } else {
-            self.jobLeadService = CloudKitJobLeadServiceAdapter(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
-        }
-
-        if let ms = messagingService {
-            self.messagingService = ms
-        } else {
-            // Use the CloudKit-backed messaging service (production container)
-            self.messagingService = CloudKitMessagingServiceCK(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
-        }
-
-        if let cs = communityService {
-            self.communityService = cs
-        } else {
-            // Default to CloudKit-backed community service
-            self.communityService = CloudKitCommunityService(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
-        }
+        self.cloudProfileStore = cloudProfileStore ?? CloudKitProfileStore(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
+        self.jobLeadService = jobLeadService ?? CloudKitJobLeadServiceAdapter(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
+        self.messagingService = messagingService ?? CloudKitMessagingServiceCK(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
+        self.communityService = communityService ?? CloudKitCommunityService(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
 
         // Load legacy setup registries
         let cust = (UserDefaults.standard.array(forKey: Self.registeredCustomerAccountsKey) as? [String]) ?? []
@@ -346,7 +311,7 @@ final class AppState {
         // Ensure identity-scoped local profile is present for current identity
         loadPersistedProfile()
 
-        // Seed preferences from UserDefaults
+        // Preferences
         if defaults.object(forKey: notificationsEnabledKey) != nil {
             self.notificationsEnabled = defaults.bool(forKey: notificationsEnabledKey)
         } else {
@@ -359,7 +324,7 @@ final class AppState {
             self.appearanceMode = .system
         }
 
-        // Seed onboarding-completed flags from UserDefaults (persist across launches)
+        // Onboarding-completed flags
         if defaults.object(forKey: customerOnboardingCompletedKey) != nil {
             self.customerOnboardingCompleted = defaults.bool(forKey: customerOnboardingCompletedKey)
         } else {
@@ -371,8 +336,8 @@ final class AppState {
             self.tradespersonOnboardingCompleted = false
         }
 
-        // Attempt silent provider session restoration in background (non-blocking).
-        Task.detached { [weak self] in
+        // Attempt silent provider session restoration (must be main-thread safe for Google on iOS 18).
+        Task { [weak self] in
             await self?.attemptSilentProviderRestoration()
         }
     }
@@ -380,7 +345,6 @@ final class AppState {
     // MARK: - Auth restoration
 
     private func restoreAuthStateFromDefaults() {
-        // Provider/email
         if let raw = defaults.string(forKey: authProviderKey),
            let prov = AuthProvider(rawValue: raw) {
             self.authProvider = prov
@@ -389,7 +353,6 @@ final class AppState {
         }
         self.authEmail = defaults.string(forKey: authEmailKey)
 
-        // Role
         if let rawRole = defaults.string(forKey: selectedRoleKey),
            let role = Role(rawValue: rawRole) {
             self.selectedRole = role
@@ -397,8 +360,6 @@ final class AppState {
             self.selectedRole = nil
         }
 
-        // Decide authenticated optimistically if we have a coherent identity for the provider.
-        // This ensures RootView goes straight to the correct portal on cold launch.
         let hasIdentity: Bool = {
             switch authProvider {
             case .apple:
@@ -416,7 +377,6 @@ final class AppState {
                 return false
             }
         }()
-        // If previous session was marked authenticated and identity exists, keep it; otherwise derive from identity presence.
         if defaults.object(forKey: isAuthenticatedKey) != nil {
             let stored = defaults.bool(forKey: isAuthenticatedKey)
             self.isAuthenticated = stored && hasIdentity
@@ -425,13 +385,21 @@ final class AppState {
         }
     }
 
+    // Google SDK requires main-thread entry on older iOS; run this on MainActor.
+    @MainActor
+    private func restoreGoogleSessionOnMainActor() async throws {
+        try await GIDSignIn.sharedInstance.restorePreviousSignIn()
+    }
+
     private func attemptSilentProviderRestoration() async {
         switch authProvider {
         case .google:
-            // Best-effort: restore previous Google session so tokens are refreshed.
-            _ = try? await GIDSignIn.sharedInstance.restorePreviousSignIn()
+            do {
+                try await restoreGoogleSessionOnMainActor()
+            } catch {
+                // Best-effort; keep optimistic state
+            }
         case .apple:
-            // Check Apple credential state; if revoked, sign out.
             if let userID = UserDefaults.standard.string(forKey: "apple_user_id"), !userID.isEmpty {
                 let provider = ASAuthorizationAppleIDProvider()
                 do {
@@ -439,9 +407,7 @@ final class AppState {
                     if state != .authorized {
                         await MainActor.run { self.signOut() }
                     }
-                } catch {
-                    // Ignore errors; keep optimistic state
-                }
+                } catch { /* ignore */ }
             }
         case .email, .guest, .x, .none:
             break
@@ -473,7 +439,6 @@ final class AppState {
         if let id = currentAuthIdentity() {
             if let flags = try? await cloudProfileStore.fetchOnboardingFlags(identity: id) {
                 await MainActor.run {
-                    // Merge (OR) remote flags with local ones to avoid ever downgrading a completed device.
                     self.customerOnboardingCompleted = self.customerOnboardingCompleted || flags.customerOnboardingCompleted
                     self.tradespersonOnboardingCompleted = self.tradespersonOnboardingCompleted || flags.tradespersonOnboardingCompleted
                     self.customerSetupCompleted = self.customerSetupCompleted || flags.customerSetupCompleted
@@ -515,18 +480,16 @@ final class AppState {
                 savePersistedProfile()
             }
         } catch {
-            // Silent failure is acceptable for background sync; keep app running
+            // Silent failure is acceptable for background sync
         }
     }
 
     // MARK: - Leads
 
     func refreshLeads() async {
-        // Ensure CK subscription and enforce profile asset cache budget
         try? await jobLeadService.ensureSubscription()
         try? await cloudProfileStore.enforceCacheBudget()
 
-        // Fetch latest marketplace leads and publish to UI
         do {
             let latest = try await jobLeadService.latest()
             await MainActor.run {
@@ -537,12 +500,11 @@ final class AppState {
         }
     }
 
-    // Convenience to match older call sites that expected ensureLeadsSubscription on AppState
     func ensureLeadsSubscription() async throws {
         try await jobLeadService.ensureSubscription()
     }
 
-    // Saved/hidden helpers used by views
+    // Saved/hidden helpers
 
     func isLeadSaved(_ id: UUID) -> Bool {
         let key = id.uuidString.lowercased()
@@ -565,7 +527,6 @@ final class AppState {
         }
     }
 
-    // New: unhide helpers used by HiddenLeadsView toolbar and rows
     func unhideLead(id: UUID) {
         let key = id.uuidString.lowercased()
         if let idx = hiddenLeadIDs.firstIndex(where: { $0.lowercased() == key }) {
@@ -598,7 +559,7 @@ final class AppState {
             let decoded = try JSONDecoder().decode(UserProfile.self, from: data)
             self.profile = decoded
         } catch {
-            // Ignore corrupt file and keep in-memory profile
+            // Ignore corrupt file
         }
     }
 
@@ -607,12 +568,9 @@ final class AppState {
         do {
             let data = try JSONEncoder().encode(profile)
             try data.write(to: url, options: [.atomic])
-        } catch {
-            // ignore
-        }
+        } catch { }
     }
 
-    // Convenience used by extensions (e.g., Setup, Certifications) to persist local profile changes.
     func saveProfile() {
         savePersistedProfile()
     }
@@ -627,20 +585,15 @@ final class AppState {
         UserDefaults.standard.removeObject(forKey: "google_user_id")
     }
 
-    // MARK: - Avatar update (used by Settings/Profile views)
+    // MARK: - Avatar update
 
     func updateAvatar(with data: Data) async {
-        // 1) Write to an app-private file for immediate local display
         let fm = FileManager.default
         let base = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)) ?? fm.temporaryDirectory
         let appDir = base.appendingPathComponent("TradeBase", isDirectory: true)
         let avatarsDir = appDir.appendingPathComponent("Avatars", isDirectory: true)
-        if !fm.fileExists(atPath: appDir.path) {
-            try? fm.createDirectory(at: appDir, withIntermediateDirectories: true)
-        }
-        if !fm.fileExists(atPath: avatarsDir.path) {
-            try? fm.createDirectory(at: avatarsDir, withIntermediateDirectories: true)
-        }
+        if !fm.fileExists(atPath: appDir.path) { try? fm.createDirectory(at: appDir, withIntermediateDirectories: true) }
+        if !fm.fileExists(atPath: avatarsDir.path) { try? fm.createDirectory(at: avatarsDir, withIntermediateDirectories: true) }
         try? fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: appDir.path)
         try? fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: avatarsDir.path)
 
@@ -653,83 +606,55 @@ final class AppState {
             rvs.isExcludedFromBackup = true
             try? fileURL.setResourceValues(rvs)
         } catch {
-            // If write fails, bail out silently to avoid crashing UI
             return
         }
 
-        // 2) Update in-memory profile and persist locally
         await MainActor.run {
             self.profile.avatarURL = fileURL
             self.savePersistedProfile()
         }
 
-        // 3) Best-effort remote uploads if authenticated
         if let identity = currentAuthIdentity() {
-            // Private (CloudKit) avatar asset
             if let ckStore = cloudProfileStore as? CloudKitProfileStore {
                 try? await ckStore.updateAvatarAsset(from: fileURL, identity: identity)
             }
-            // NEW: Also upsert profile fields so the record is updated alongside the asset
             try? await cloudProfileStore.saveProfile(self.profile, identity: identity)
-            // Public profile mirror (so others can see it)
             try? await publicProfileStore?.updateAvatar(from: fileURL, identity: identity)
-
-            // 4) Optionally refresh from cloud to pick up any remote URL or cache changes
             await refreshProfileFromCloud()
         }
     }
 
-    // MARK: - App badge (placeholder to satisfy references)
+    // MARK: - App badge
 
-    func updateAppIconBadge() {
-        // No-op background implementation
-    }
+    func updateAppIconBadge() { }
 
     // MARK: - Sign out
 
-    // Helper: persist the current profile both locally and to CloudKit (best-effort)
     private func flushProfileEditsBeforeSignOut() async {
-        // Always write the local identity-scoped file first
         savePersistedProfile()
-
-        // If authenticated, push to CloudKit best-effort so next sign-in sees latest
         if let id = currentAuthIdentity() {
-            do {
-                try await cloudProfileStore.saveProfile(self.profile, identity: id)
-            } catch {
-                // Best-effort: ignore failures so sign-out continues
-            }
+            do { try await cloudProfileStore.saveProfile(self.profile, identity: id) } catch { }
         }
     }
 
     @MainActor
     func signOut() {
-        // Stop any listeners tied to the authenticated identity
         self.stopMessagingListeners()
+        Task { await self.flushProfileEditsBeforeSignOut() }
 
-        // Flush current profile edits (local + remote) before resetting in-memory state.
-        // Do this off the main actor to avoid blocking UI.
-        Task {
-            await self.flushProfileEditsBeforeSignOut()
-        }
-
-        // Reset authentication and identity-scoped state
         self.isAuthenticated = false
         self.authProvider = .none
         self.authEmail = nil
 
-        // Clear routing hints so RootView returns to the role picker (main screen)
         self.selectedRole = nil
         self.pendingJobResumeID = nil
         self.preferredMyJobsStatus = nil
         self.navigateToMyJobsSignal = 0
         self.bypassCustomerSetupOnce = false
 
-        // Optional: clear per-session setup flags (do not touch persisted onboarding-completed flags)
         self.customerSetupCompleted = false
         self.tradespersonSetupCompleted = false
 
-        // Reset in-memory profile and badges
         self.profile = AppState.defaultProfile()
         self.unreadMessageCount = 0
     }
@@ -738,22 +663,18 @@ final class AppState {
 
     @MainActor
     func continueAsGuest() async {
-        // Enter guest mode: no persistent identity; profile persists under "guest"
         self.isAuthenticated = true
         self.authProvider = .guest
         self.authEmail = nil
-        // Keep existing local profile if any guest profile exists; otherwise default
         if currentAuthIdentity() == nil {
-            // Save a fresh guest profile file so subsequent launches can restore minimal state
             self.profile = AppState.defaultProfile()
             savePersistedProfile()
         }
-        // Hydrate any non-identity-scoped state (e.g., leads)
         await load()
         self.unreadMessageCount = 0
     }
 
-    // MARK: - Unread count refresh used by ChatView and headers
+    // MARK: - Unread count refresh
 
     func refreshUnreadCount() async {
         guard let me = currentAuthIdentity() else {
@@ -764,52 +685,30 @@ final class AppState {
             let total = try await messagingService.totalUnreadCount(for: me)
             await MainActor.run { self.unreadMessageCount = max(0, total) }
         } catch {
-            // On failure, leave previous value; optionally set to 0
-            // await MainActor.run { self.unreadMessageCount = 0 }
+            // Keep previous value
         }
     }
 
-    // MARK: - Account deletion (used by Settings views)
+    // MARK: - Account deletion
 
     func deleteAccount() async throws {
-        // Capture identity if present
         let identity = currentAuthIdentity()
-
-        // Attempt remote cleanup best-effort, capture first error
         var firstError: Error?
 
         if let id = identity {
-            // Remove private avatar asset (optional)
-            do {
-                try await cloudProfileStore.removeAvatarAsset(identity: id)
-            } catch {
-                if firstError == nil { firstError = error }
-            }
-
-            // Delete user profile record
-            do {
-                try await cloudProfileStore.deleteUserProfile(identity: id)
-            } catch {
-                if firstError == nil { firstError = error }
-            }
+            do { try await cloudProfileStore.removeAvatarAsset(identity: id) } catch { if firstError == nil { firstError = error } }
+            do { try await cloudProfileStore.deleteUserProfile(identity: id) } catch { if firstError == nil { firstError = error } }
         }
 
-        // Local cleanup regardless of remote outcome
         deleteLocalProfile()
         clearScopedDefaults()
 
-        // Reset in-memory auth/profile state
-        await MainActor.run {
-            self.signOut()
-        }
+        await MainActor.run { self.signOut() }
 
-        // If we encountered a remote error for an identified account, surface it
-        if let err = firstError, identity != nil {
-            throw err
-        }
+        if let err = firstError, identity != nil { throw err }
     }
 
-    // MARK: - Messaging convenience used by LeadDetailView
+    // MARK: - Messaging convenience
 
     func openOrCreateConversation(with otherUserId: String, leadId: String?) async throws -> Conversation {
         guard let me = currentAuthIdentity(), !otherUserId.isEmpty else {
@@ -823,10 +722,8 @@ final class AppState {
         return convo
     }
 
-    // MARK: - Notifications permission helper (removed behavior)
-    func requestNotificationPermissionsIfNeeded() async {
-        // No-op: notifications removed
-    }
+    // MARK: - Notifications permission helper
+    func requestNotificationPermissionsIfNeeded() async { }
 } // <-- Close AppState here
 
 // MARK: - Protocols and default service stubs
@@ -889,13 +786,8 @@ actor DefaultCloudProfileStore: CloudProfileStore {
     func deleteUserProfile(identity: String) async throws { }
     func fetchOnboardingFlags(identity: String) async throws -> CloudKitProfileStore.OnboardingFlags? { nil }
     func enforceCacheBudget() async throws { }
-
-    // Default no-op: backends that don't support appID->identity mapping return nil
     func identity(forAppID appID: UUID) async throws -> String? { nil }
-
     func saveProfile(_ profile: AppState.UserProfile, identity: String) async throws {
         _ = (profile, identity)
-        // No-op in default stub
     }
 }
-

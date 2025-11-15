@@ -181,7 +181,6 @@ struct LeadsView: View {
                 Task { await refresh() }
             }
         }
-        // Present the tradesperson premium upsell full-screen
         .fullScreenCover(isPresented: $showingPremiumUpsell) {
             PremiumUpsellView()
         }
@@ -217,7 +216,6 @@ struct LeadsView: View {
             }
         }()
 
-        // Normalize hidden IDs for consistent comparison
         let hiddenSet = Set(state.hiddenLeadIDs.map { $0.lowercased() })
         let visibleLeads = tradeFiltered.filter { !hiddenSet.contains($0.id.uuidString.lowercased()) }
 
@@ -278,7 +276,6 @@ struct LeadsView: View {
                 List {
                     ForEach(visibleLeads) { lead in
                         NavigationLink {
-                            // Push detail view (no messaging environment pass-through anymore)
                             LeadDetailView(lead: lead)
                         } label: {
                             HStack(spacing: 12) {
@@ -410,7 +407,6 @@ struct LeadsView: View {
         .accessibilityLabel(lead.category?.displayName ?? "Job")
     }
 
-    // Pick the first URL that decodes to an image; treat failures as “no photo”.
     private func firstRenderablePhotoURL(in urls: [URL]) -> URL? {
         for url in urls {
             if UIImage(contentsOfFile: url.path) != nil { return url }
@@ -442,6 +438,7 @@ struct LeadsView: View {
         await state.refreshLeads()
     }
 
+    @MainActor
     private func shareLead(_ lead: MarketplaceLead) {
         let text = "Job Lead: \(lead.title) in \(lead.location.city) \(lead.location.postcode)"
         let avc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
@@ -470,7 +467,6 @@ private struct CategoryTile: View {
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.95))
         }
-        // The row applies clip/overlay/frame; keep this view “raw” so it composes identically to photos.
         .accessibilityHidden(true)
     }
 
@@ -507,8 +503,7 @@ private struct CategoryTile: View {
     }
 }
 
-// MARK: - JobTypeFilterSheet
-
+// MARK: - JobTypeFilterSheet (unchanged)
 private struct JobTypeFilterSheet: View {
     @Binding var selectedTrades: Set<TradeType>
     let onClose: () -> Void

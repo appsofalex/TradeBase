@@ -10,18 +10,14 @@ import AuthenticationServices
 
 struct AuthEntryView: View {
     enum Presentation {
-        case onboarding      // first-time entry (no left control per request)
-        case gatedModal      // presented from a feature gate (show native-like X at top-right)
+        case onboarding
+        case gatedModal
     }
 
     @Environment(\.appState) private var state
     @Environment(\.dismiss) private var dismiss
 
-    // Default keeps existing behavior in RootView and elsewhere.
     let presentation: Presentation
-
-    // When true, the guest “Skip sign in for now” option is hidden.
-    // Use this for the customer job-posting gate while in guest mode.
     let hideGuestSkip: Bool
 
     @State private var isLoading = false
@@ -33,7 +29,6 @@ struct AuthEntryView: View {
     }
 
     var body: some View {
-        // Ensure a navigation container exists when we want a toolbar close button
         Group {
             if presentation == .gatedModal {
                 NavigationStack { content }
@@ -43,16 +38,13 @@ struct AuthEntryView: View {
         }
     }
 
-    // Extracted to keep layout identical in both modes
     private var content: some View {
         ZStack {
             TBTheme.gradient.ignoresSafeArea()
 
-            // Content anchored toward the bottom like the reference screenshot.
             VStack(spacing: 0) {
                 Spacer(minLength: 40)
 
-                // Centered headline: small "Welcome to" above large "TradeBase"
                 VStack(spacing: 6) {
                     Text("Welcome to")
                         .font(.title3.weight(.semibold))
@@ -64,9 +56,8 @@ struct AuthEntryView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
-                Spacer() // Push actions to the bottom
+                Spacer()
 
-                // Helper copy just above the auth buttons
                 Text("Sign up or log in using a service below")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(TBTheme.offWhiteSecondary)
@@ -92,12 +83,10 @@ struct AuthEntryView: View {
                         .padding(.bottom, 4)
                 }
 
-                // Guest option on unified entry (conditionally hidden for specific gates)
                 if !hideGuestSkip {
                     Button {
                         Task {
                             isLoading = true
-                            // Forward motion for guest entry into setup
                             state.navigationDirection = .forward
                             await state.continueAsGuest()
                             isLoading = false
@@ -115,7 +104,6 @@ struct AuthEntryView: View {
                     .padding(.bottom, 18)
                 }
 
-                // Provide breathing room above the home indicator
                 Color.clear
                     .frame(height: 8)
                     .padding(.bottom, 6)
@@ -125,11 +113,9 @@ struct AuthEntryView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // We’re not pushing on a stack when arriving from role choice, so we provide our own back.
         .navigationBarBackButtonHidden(true)
         .toolbar {
             if presentation == .gatedModal {
-                // Top-right circular X (system toolbar button with xmark image)
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismiss()
@@ -140,10 +126,8 @@ struct AuthEntryView: View {
                     .accessibilityLabel("Close")
                 }
             } else {
-                // Show a native-looking back button that returns to the role picker
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        // Simulate a back navigation by clearing the role
                         state.navigationDirection = .back
                         state.selectedRole = nil
                     } label: {
@@ -154,36 +138,31 @@ struct AuthEntryView: View {
                 }
             }
         }
-        // Auto-dismiss this gated modal the moment any auth succeeds.
-        .onChange(of: state.authProvider) { newProvider, _ in
-            if presentation == .gatedModal, newProvider != nil {
+        // Dismiss the gated modal only after successful authentication.
+        .onChange(of: state.isAuthenticated) { newValue, _ in
+            if presentation == .gatedModal, newValue {
                 dismiss()
             }
         }
     }
-
-    // MARK: - Social wrapper with cancel filtering
 
     private func social(_ action: @escaping () async throws -> Void) async {
         error = nil
         isLoading = true
         do {
             try await action()
-            // Do not flip direction here; RootView handles forward on sign-in/setup.
             if presentation == .gatedModal {
                 dismiss()
             }
         } catch {
             if isUserCancelledAuth(error) {
-                // Ignore user-initiated cancel
+                // ignore
             } else {
                 self.error = error.localizedDescription
             }
         }
         isLoading = false
     }
-
-    // MARK: - Cancel filtering (matches LoginView)
 
     private func isUserCancelledAuth(_ error: Error) -> Bool {
         if let authErr = error as? ASAuthorizationError, authErr.code == .canceled { return true }
@@ -196,7 +175,7 @@ struct AuthEntryView: View {
     }
 }
 
-// MARK: - Helper view to place a control just below the top safe area, aligned leading
+// MARK: - Helper view
 private struct SafeAreaInsetTopLeading<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
