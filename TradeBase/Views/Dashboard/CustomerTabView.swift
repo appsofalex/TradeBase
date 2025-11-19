@@ -58,4 +58,3 @@ struct CustomerTabView: View {
         }
     }
 }
-

@@ -590,4 +590,3 @@ private struct InlineEmptyState: View {
         .padding()
     }
 }
-

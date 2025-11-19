@@ -327,6 +327,8 @@ final class AppState {
 
         // Ensure identity-scoped local profile is present for current identity
         loadPersistedProfile()
+        // Load identity-scoped scheduled leads
+        loadScheduledLeadIDs()
 
         // Preferences
         if defaults.object(forKey: notificationsEnabledKey) != nil {
@@ -453,6 +455,7 @@ final class AppState {
         // Load local profile first so UI shows exactly what the user last saved.
         await MainActor.run {
             self.loadPersistedProfile()
+            self.loadScheduledLeadIDs()
         }
 
         // Then refresh from cloud in the background; if remote exists, it will overwrite and be re-saved.
@@ -557,6 +560,33 @@ final class AppState {
         hiddenLeadIDs.removeAll()
     }
 
+    // MARK: - Scheduled leads (Your Schedule uses the exact lead tiles)
+
+    // In-memory cache of scheduled lead IDs (identity-scoped)
+    private(set) var scheduledLeadIDs: Set<UUID> = []
+
+    // Add a lead to the schedule (de-duplicated)
+    func addToSchedule(lead: MarketplaceLead) {
+        scheduledLeadIDs.insert(lead.id)
+        saveScheduledLeadIDs()
+    }
+
+    func removeFromSchedule(id: UUID) {
+        scheduledLeadIDs.remove(id)
+        saveScheduledLeadIDs()
+    }
+
+    func isInSchedule(_ id: UUID) -> Bool {
+        scheduledLeadIDs.contains(id)
+    }
+
+    // Return actual MarketplaceLead objects for the scheduled IDs
+    func scheduledLeads(from allLeads: [MarketplaceLead]) -> [MarketplaceLead] {
+        let set = scheduledLeadIDs
+        return allLeads.filter { set.contains($0.id) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     // MARK: - Local profile persistence (identity-scoped)
 
     private func profileFileURL(for identity: String?) -> URL {
@@ -567,6 +597,17 @@ final class AppState {
         try? fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: appDir.path)
         let name = (identity?.replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "-", options: .regularExpression) ?? "guest")
         return appDir.appendingPathComponent("Profile_\(name).json")
+    }
+
+    // Identity-scoped scheduled IDs file
+    private func scheduledIDsFileURL(for identity: String?) -> URL {
+        let fm = FileManager.default
+        let base = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)) ?? fm.temporaryDirectory
+        let appDir = base.appendingPathComponent("TradeBase", isDirectory: true)
+        if !fm.fileExists(atPath: appDir.path) { try? fm.createDirectory(at: appDir, withIntermediateDirectories: true) }
+        try? fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: appDir.path)
+        let name = (identity?.replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "-", options: .regularExpression) ?? "guest")
+        return appDir.appendingPathComponent("ScheduledLeads_\(name).json")
     }
 
     func loadPersistedProfile() {
@@ -592,6 +633,33 @@ final class AppState {
 
     func saveProfile() {
         savePersistedProfile()
+    }
+
+    // Scheduled IDs persistence
+
+    private func loadScheduledLeadIDs() {
+        let url = scheduledIDsFileURL(for: currentAuthIdentity())
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else {
+            scheduledLeadIDs = []
+            return
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let ids = try JSONDecoder().decode([UUID].self, from: data)
+            scheduledLeadIDs = Set(ids)
+        } catch {
+            scheduledLeadIDs = []
+        }
+    }
+
+    private func saveScheduledLeadIDs() {
+        let url = scheduledIDsFileURL(for: currentAuthIdentity())
+        do {
+            let ids = Array(scheduledLeadIDs)
+            let data = try JSONEncoder().encode(ids)
+            try data.write(to: url, options: [.atomic])
+        } catch { }
     }
 
     func deleteLocalProfile() {
@@ -676,6 +744,7 @@ final class AppState {
 
         self.profile = AppState.defaultProfile()
         self.unreadMessageCount = 0
+        self.scheduledLeadIDs = []
     }
 
     // MARK: - Guest session
@@ -810,4 +879,3 @@ actor DefaultCloudProfileStore: CloudProfileStore {
         _ = (profile, identity)
     }
 }
-

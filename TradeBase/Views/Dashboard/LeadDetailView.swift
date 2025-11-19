@@ -9,6 +9,7 @@ import UIKit
 
 struct LeadDetailView: View {
     @Environment(\.appState) private var state
+    @Environment(\.switchTradesTab) private var switchTab
     let lead: MarketplaceLead
     @State private var region: MKCoordinateRegion?
 
@@ -56,6 +57,21 @@ struct LeadDetailView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Add-to-schedule pill between description and Budget
+                Button {
+                    state.addToSchedule(lead: lead)
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    switchTab(.jobs)
+                } label: {
+                    Text("Add job to your schedule")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(TBTheme.brand)
+                .controlSize(.large)
+                .clipShape(Capsule())
+                .accessibilityLabel("Add job to your schedule")
+
                 budgetSection
                 timingSection
                 locationSection
@@ -88,7 +104,7 @@ struct LeadDetailView: View {
         }
         .navigationTitle("Lead")
         .navigationBarTitleDisplayMode(.inline)
-        .background(chatNavigationLink) // extracted to keep body simpler
+        .background(chatNavigationLink)
         .alert("Couldn’t open chat", isPresented: Binding(
             get: { openError != nil },
             set: { if !$0 { openError = nil } }
@@ -118,7 +134,6 @@ struct LeadDetailView: View {
         }
     }
 
-    // Extracted to reduce type-checker complexity
     private var chatNavigationLink: some View {
         NavigationLink(
             isActive: Binding(
@@ -142,7 +157,6 @@ struct LeadDetailView: View {
         if isHydratingPhotos { return }
         await MainActor.run { isHydratingPhotos = true }
 
-        // 1) Prefer URLs already on the lead that decode.
         let usable = lead.photoURLs.filter { UIImage(contentsOfFile: $0.path) != nil }
         if !usable.isEmpty {
             await MainActor.run {
@@ -152,7 +166,6 @@ struct LeadDetailView: View {
             return
         }
 
-        // 2) Fallback: fetch the CloudKit record directly and read CKAsset.fileURL (same as ChatView).
         do {
             let db = state.cloudKitContainer.publicCloudDatabase
             let recID = CKRecord.ID(recordName: lead.id.uuidString)
@@ -170,10 +183,7 @@ struct LeadDetailView: View {
                 }
                 return
             }
-        } catch {
-            // ignore; we’ll leave hydratedPhotoURLs empty and UI will simply show nothing
-        }
-
+        } catch { }
         await MainActor.run { isHydratingPhotos = false }
     }
 
@@ -378,91 +388,63 @@ struct LeadDetailView: View {
         .accessibilityLabel("or")
     }
 
+    // Chat + WhatsApp helpers (restored implementations)
+
     private func messageCustomer(posterIdentity: String?) async {
-        if let me = state.currentAuthIdentity(),
-           let other = posterIdentity, !other.isEmpty,
-           other != me {
-            await openChat(with: other)
+        guard let other = posterIdentity, !other.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await MainActor.run { showIdentityUnavailableAlert = true }
             return
         }
-        if let appID = lead.posterAppID {
-            do {
-                if let other = try await state.cloudProfileStore.identity(forAppID: appID),
-                   let me = state.currentAuthIdentity(),
-                   !other.isEmpty,
-                   other != me {
-                    await openChat(with: other)
-                    return
-                }
-            } catch { }
-        }
-        await MainActor.run { showIdentityUnavailableAlert = true }
-    }
-
-    private func openChat(with otherUserId: String) async {
         await MainActor.run {
             isOpeningChat = true
             openError = nil
         }
-
-        var shouldFocus = false
-        if let me = state.currentAuthIdentity() {
-            if let existing = try? await state.messagingService.fetchConversations(for: me) {
-                let already = existing.contains(where: { conv in
-                    Set(conv.participantIds) == Set([me, otherUserId]) && conv.leadId == lead.id.uuidString
-                })
-                shouldFocus = !already
-            } else {
-                shouldFocus = true
-            }
-        }
-
         do {
-            let convo = try await state.openOrCreateConversation(with: otherUserId, leadId: lead.id.uuidString)
+            let convo = try await state.openOrCreateConversation(with: other, leadId: lead.id.uuidString)
             await MainActor.run {
-                self.focusComposerOnChatAppear = shouldFocus
-                self.openConversation = convo
-                self.isOpeningChat = false
+                focusComposerOnChatAppear = true
+                openConversation = convo
+                isOpeningChat = false
             }
         } catch {
             await MainActor.run {
-                self.openError = error.localizedDescription
-                self.isOpeningChat = false
+                openError = (error as NSError).localizedDescription
+                isOpeningChat = false
             }
         }
     }
 
-    // MARK: - WhatsApp
-
     private func openWhatsApp(with rawPhone: String) {
-        let normalized = normalizePhoneForWhatsApp(rawPhone)
-        guard !normalized.isEmpty else {
-            whatsappError = "This job doesn’t include a valid phone number."
-            return
-        }
-        if let schemeURL = URL(string: "whatsapp://send?phone=\(normalized)"),
-           UIApplication.shared.canOpenURL(schemeURL) {
-            UIApplication.shared.open(schemeURL, options: [:], completionHandler: nil)
-            return
-        }
-        if let httpsURL = URL(string: "https://wa.me/\(normalized)") {
-            UIApplication.shared.open(httpsURL, options: [:], completionHandler: nil)
-        } else {
-            whatsappError = "Couldn’t form a WhatsApp link for this number."
-        }
-    }
-
-    private func normalizePhoneForWhatsApp(_ s: String) -> String {
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        var result = ""
+        // Normalize: keep only '+' and digits, ensure leading '+'
+        let trimmed = rawPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cleaned = "+"
         for (i, ch) in trimmed.enumerated() {
-            if ch.isNumber { result.append(ch) }
-            else if ch == "+", i == 0 { result.append(ch) }
+            if ch.isNumber { cleaned.append(ch) }
+            else if ch == "+", i == 0 { continue }
         }
-        if result.hasPrefix("+") {
-            return result.replacingOccurrences(of: "+", with: "")
+        if cleaned == "+" {
+            whatsappError = "Invalid phone number."
+            return
         }
-        return result
+
+        // whatsapp:// scheme (requires LSApplicationQueriesSchemes configured if needed)
+        if let appURL = URL(string: "whatsapp://send?phone=\(cleaned.dropFirst())") {
+            if UIApplication.shared.canOpenURL(appURL) {
+                UIApplication.shared.open(appURL, options: [:], completionHandler: nil)
+                return
+            }
+        }
+
+        // Fallback to wa.me (opens in WhatsApp if installed or web otherwise)
+        if let webURL = URL(string: "https://wa.me/\(cleaned.dropFirst())") {
+            UIApplication.shared.open(webURL, options: [:], completionHandler: { success in
+                if !success {
+                    DispatchQueue.main.async { self.whatsappError = "Couldn’t open WhatsApp." }
+                }
+            })
+        } else {
+            whatsappError = "Couldn’t open WhatsApp."
+        }
     }
 
     private func budgetSummary() -> String {
@@ -505,14 +487,10 @@ struct LeadDetailView: View {
                             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
                         ])
                     }
-                } catch {
-                    // ignore
-                }
+                } catch { }
             }
         }
     }
-
-    // MARK: - Quick Look normalization (single image) – matches Chat
 
     private func normalizedPreviewURL(for original: URL) -> URL? {
         let ext = original.pathExtension.lowercased()
