@@ -4,11 +4,17 @@ import Contacts
 import CoreLocation
 import QuickLook
 import UniformTypeIdentifiers
+import CloudKit
+import UIKit
 
 struct LeadDetailView: View {
     @Environment(\.appState) private var state
     let lead: MarketplaceLead
     @State private var region: MKCoordinateRegion?
+
+    // Hydrated photos specifically for the detail view
+    @State private var hydratedPhotoURLs: [URL] = []
+    @State private var isHydratingPhotos = false
 
     // Single-image Quick Look state (matches Chat behavior)
     @State private var showQL = false
@@ -57,7 +63,6 @@ struct LeadDetailView: View {
                 if let identity = lead.posterIdentity {
                     customerSection(posterIdentity: identity)
                 } else {
-                    // Always render the Customer section, force show the Message button with fallback
                     customerSection(posterIdentity: nil)
                 }
             }
@@ -79,27 +84,11 @@ struct LeadDetailView: View {
             if let coord = lead.location.coordinate {
                 region = MKCoordinateRegion(center: coord, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02))
             }
+            Task { await hydratePhotosIfNeeded() }
         }
         .navigationTitle("Lead")
         .navigationBarTitleDisplayMode(.inline)
-        // Push ChatView instead of presenting it as a sheet
-        .background(
-            NavigationLink(
-                isActive: Binding(
-                    get: { openConversation != nil },
-                    set: { if !$0 { openConversation = nil } }
-                )
-            ) {
-                if let convo = openConversation {
-                    // Pass focus flag so the keyboard raises when a new conversation starts
-                    ChatView(conversation: convo, focusOnAppear: focusComposerOnChatAppear)
-                        .environment(\.appState, state)
-                } else {
-                    EmptyView()
-                }
-            } label: { EmptyView() }
-            .hidden()
-        )
+        .background(chatNavigationLink) // extracted to keep body simpler
         .alert("Couldn’t open chat", isPresented: Binding(
             get: { openError != nil },
             set: { if !$0 { openError = nil } }
@@ -108,20 +97,17 @@ struct LeadDetailView: View {
         } message: {
             Text(openError ?? "Please try again.")
         }
-        // NEW: identity unavailable alert
         .alert("Customer identity unavailable", isPresented: $showIdentityUnavailableAlert) {
             Button("OK", role: .cancel) { }
         } message: {
             Text("We can’t start a chat for this job because the customer’s identity isn’t attached to the listing.")
         }
-        // Single-image Quick Look sheet (exactly like Chat)
         .sheet(isPresented: $showQL) {
             if let item = qlItem {
                 QLPreviewControllerWrapper(item: item, isPresented: $showQL)
                     .ignoresSafeArea()
             }
         }
-        // WhatsApp error
         .alert("Can’t open WhatsApp", isPresented: Binding(
             get: { whatsappError != nil },
             set: { if !$0 { whatsappError != nil } }
@@ -132,10 +118,68 @@ struct LeadDetailView: View {
         }
     }
 
+    // Extracted to reduce type-checker complexity
+    private var chatNavigationLink: some View {
+        NavigationLink(
+            isActive: Binding(
+                get: { openConversation != nil },
+                set: { if !$0 { openConversation = nil } }
+            )
+        ) {
+            if let convo = openConversation {
+                ChatView(conversation: convo, focusOnAppear: focusComposerOnChatAppear)
+                    .environment(\.appState, state)
+            } else {
+                EmptyView()
+            }
+        } label: { EmptyView() }
+        .hidden()
+    }
+
+    // MARK: - Photo hydration
+
+    private func hydratePhotosIfNeeded() async {
+        if isHydratingPhotos { return }
+        await MainActor.run { isHydratingPhotos = true }
+
+        // 1) Prefer URLs already on the lead that decode.
+        let usable = lead.photoURLs.filter { UIImage(contentsOfFile: $0.path) != nil }
+        if !usable.isEmpty {
+            await MainActor.run {
+                self.hydratedPhotoURLs = usable
+                self.isHydratingPhotos = false
+            }
+            return
+        }
+
+        // 2) Fallback: fetch the CloudKit record directly and read CKAsset.fileURL (same as ChatView).
+        do {
+            let db = state.cloudKitContainer.publicCloudDatabase
+            let recID = CKRecord.ID(recordName: lead.id.uuidString)
+            if let rec = try? await db.record(for: recID),
+               let assets = rec["photoAssets"] as? [CKAsset] {
+                var urls: [URL] = []
+                for a in assets {
+                    if let u = a.fileURL, UIImage(contentsOfFile: u.path) != nil {
+                        urls.append(u)
+                    }
+                }
+                await MainActor.run {
+                    self.hydratedPhotoURLs = urls
+                    self.isHydratingPhotos = false
+                }
+                return
+            }
+        } catch {
+            // ignore; we’ll leave hydratedPhotoURLs empty and UI will simply show nothing
+        }
+
+        await MainActor.run { isHydratingPhotos = false }
+    }
+
     @ViewBuilder
     private var photosSection: some View {
-        // Only render if at least one image decodes successfully.
-        let urls = lead.photoURLs.filter { UIImage(contentsOfFile: $0.path) != nil }
+        let urls = hydratedPhotoURLs
         if !urls.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -160,6 +204,8 @@ struct LeadDetailView: View {
                 }
                 .padding(.horizontal, 2)
             }
+        } else if isHydratingPhotos {
+            ProgressView().frame(height: 12).padding(.top, 4)
         }
     }
 
@@ -227,7 +273,6 @@ struct LeadDetailView: View {
                         .accessibilityHint("Opens Apple Maps for directions")
                 }
 
-                // Full-width, prominent mint button to match "Message customer"
                 Button {
                     openInAppleMaps()
                 } label: {
@@ -238,7 +283,7 @@ struct LeadDetailView: View {
                             .renderingMode(.original)
                             .scaledToFit()
                             .frame(height: 18)
-                            .offset(y: 1) // slight nudge down to align with text baseline
+                            .offset(y: 1)
                             .accessibilityHidden(true)
                     }
                     .frame(maxWidth: .infinity)
@@ -274,7 +319,6 @@ struct LeadDetailView: View {
                 }
                 .accessibilityLabel("View customer profile")
 
-                // Always show the "Message customer" pill with fallback behavior.
                 Button {
                     Task {
                         await messageCustomer(posterIdentity: posterIdentity)
@@ -289,7 +333,6 @@ struct LeadDetailView: View {
                 .clipShape(Capsule())
                 .disabled(isOpeningChat)
 
-                // NEW: “or” separator + WhatsApp button (only if a phone number is available)
                 if let phone = lead.contactPhone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     orSeparator
 
@@ -307,7 +350,7 @@ struct LeadDetailView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(red: 0.145, green: 0.827, blue: 0.400)) // #25D366
+                    .tint(Color(red: 0.145, green: 0.827, blue: 0.400))
                     .controlSize(.large)
                     .clipShape(Capsule())
                     .accessibilityLabel("Message in WhatsApp")
@@ -317,7 +360,6 @@ struct LeadDetailView: View {
         }
     }
 
-    // Small centered “or” with hairline dividers
     private var orSeparator: some View {
         HStack(spacing: 10) {
             Rectangle()
@@ -337,15 +379,12 @@ struct LeadDetailView: View {
     }
 
     private func messageCustomer(posterIdentity: String?) async {
-        // If identity is available and not me, open chat.
         if let me = state.currentAuthIdentity(),
            let other = posterIdentity, !other.isEmpty,
            other != me {
             await openChat(with: other)
             return
         }
-
-        // Fallback: try to resolve from posterAppID
         if let appID = lead.posterAppID {
             do {
                 if let other = try await state.cloudProfileStore.identity(forAppID: appID),
@@ -355,12 +394,8 @@ struct LeadDetailView: View {
                     await openChat(with: other)
                     return
                 }
-            } catch {
-                // Ignore resolution error; we’ll show the alert below if we can’t resolve
-            }
+            } catch { }
         }
-
-        // Still no identity — show alert
         await MainActor.run { showIdentityUnavailableAlert = true }
     }
 
@@ -370,7 +405,6 @@ struct LeadDetailView: View {
             openError = nil
         }
 
-        // Determine if this will be a brand-new conversation so we can focus the composer.
         var shouldFocus = false
         if let me = state.currentAuthIdentity() {
             if let existing = try? await state.messagingService.fetchConversations(for: me) {
@@ -379,7 +413,6 @@ struct LeadDetailView: View {
                 })
                 shouldFocus = !already
             } else {
-                // If we can’t check, err on focusing for better UX when initiating
                 shouldFocus = true
             }
         }
@@ -407,15 +440,11 @@ struct LeadDetailView: View {
             whatsappError = "This job doesn’t include a valid phone number."
             return
         }
-
-        // Try the native scheme first (requires LSApplicationQueriesSchemes = whatsapp)
         if let schemeURL = URL(string: "whatsapp://send?phone=\(normalized)"),
            UIApplication.shared.canOpenURL(schemeURL) {
             UIApplication.shared.open(schemeURL, options: [:], completionHandler: nil)
             return
         }
-
-        // Fallback: wa.me link via Safari
         if let httpsURL = URL(string: "https://wa.me/\(normalized)") {
             UIApplication.shared.open(httpsURL, options: [:], completionHandler: nil)
         } else {
@@ -424,15 +453,12 @@ struct LeadDetailView: View {
     }
 
     private func normalizePhoneForWhatsApp(_ s: String) -> String {
-        // Keep leading + and digits only
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
         var result = ""
         for (i, ch) in trimmed.enumerated() {
             if ch.isNumber { result.append(ch) }
             else if ch == "+", i == 0 { result.append(ch) }
         }
-        // WhatsApp expects E.164 (e.g., +447... or 447...).
-        // For wa.me, drop the plus.
         if result.hasPrefix("+") {
             return result.replacingOccurrences(of: "+", with: "")
         }
@@ -489,13 +515,10 @@ struct LeadDetailView: View {
     // MARK: - Quick Look normalization (single image) – matches Chat
 
     private func normalizedPreviewURL(for original: URL) -> URL? {
-        // If it already has a reasonable image extension, just use it.
         let ext = original.pathExtension.lowercased()
         if ["jpg", "jpeg", "png", "heic", "gif", "tiff"].contains(ext) {
             return original
         }
-
-        // Copy/convert to a temp QL folder with a proper extension
         let fm = FileManager.default
         let tmpDir = fm.temporaryDirectory.appendingPathComponent("QLPreview", isDirectory: true)
         if !fm.fileExists(atPath: tmpDir.path) {
@@ -517,12 +540,12 @@ struct LeadDetailView: View {
             try? dest.setResourceValues(rvs)
             return dest
         } catch {
-            return original // fallback; QL may still show a generic view
+            return original
         }
     }
 }
 
-// MARK: - Native Quick Look wrapper with Close button (local copy from Chat)
+// MARK: - Native Quick Look wrapper with Close button (same as ChatView’s local wrapper)
 
 private struct QLPreviewControllerWrapper: UIViewControllerRepresentable {
     let item: NSURL

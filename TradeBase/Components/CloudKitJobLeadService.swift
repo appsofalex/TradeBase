@@ -1,5 +1,3 @@
-private let maxCacheBytes: Int64 = 80 * 1024 * 1024 // 80 MB cap for lead images
-
 //
 //  CloudKitJobLeadService.swift
 //  TradeBase
@@ -11,6 +9,7 @@ private let maxCacheBytes: Int64 = 80 * 1024 * 1024 // 80 MB cap for lead images
 import Foundation
 import CloudKit
 import CoreLocation
+import UIKit
 
 actor CloudKitJobLeadService {
 
@@ -138,7 +137,9 @@ actor CloudKitJobLeadService {
             let records = try await queryAll(query: strictQuery, limit: limit)
             print("[CKLeads] latest strict fetched records=\(records.count)")
             if !records.isEmpty {
-                return try await mapAndSort(records: records, sortClientSideIfNeeded: false)
+                let mapped = try await mapAndSort(records: records, sortClientSideIfNeeded: false)
+                await enforceCacheBudget() // single pass after mapping
+                return mapped
             }
         } catch {
             // Log but continue to fallback
@@ -156,7 +157,9 @@ actor CloudKitJobLeadService {
             (rec[Field.status] as? String) == JobListingStatus.active.rawValue
         }
 
-        return try await mapAndSort(records: activeRecords, sortClientSideIfNeeded: true)
+        let mapped = try await mapAndSort(records: activeRecords, sortClientSideIfNeeded: true)
+        await enforceCacheBudget() // single pass after mapping
+        return mapped
     }
 
     func ensureSubscription() async throws {
@@ -238,7 +241,8 @@ actor CloudKitJobLeadService {
         var photoURLs: [URL] = []
         if let assets = record[Field.photoAssets] as? [CKAsset] {
             for (idx, asset) in assets.enumerated() {
-                if let cached = try? copyAssetToCache(asset, preferredName: "lead-\(id.uuidString)-\(idx)") {
+                if let cached = try? copyAssetToCache(asset, preferredName: "lead-\(id.uuidString)-\(idx)"),
+                   isRenderableImage(at: cached) {
                     photoURLs.append(cached)
                 }
             }
@@ -269,7 +273,20 @@ actor CloudKitJobLeadService {
         )
     }
 
-    // MARK: - Helpers (unchanged)
+    private func isRenderableImage(at url: URL) -> Bool {
+        // Fast path: if a known image extension, try to decode
+        let ext = url.pathExtension.lowercased()
+        if ["jpg", "jpeg", "png", "heic", "gif", "tiff"].contains(ext) {
+            return UIImage(contentsOfFile: url.path) != nil
+        }
+        // Fallback: try Data->UIImage decode
+        if let data = try? Data(contentsOf: url), UIImage(data: data) != nil {
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Helpers
     private func decimal(from any: Any?) -> Decimal? {
         switch any {
         case let n as NSNumber: return Decimal(string: n.stringValue)
@@ -283,7 +300,7 @@ actor CloudKitJobLeadService {
         guard let src = asset.fileURL, fm.fileExists(atPath: src.path) else {
             throw NSError(domain: "CloudKitJobLeadService", code: -10, userInfo: [NSLocalizedDescriptionKey: "Missing asset file"])
         }
-        let ext = src.pathExtension.isEmpty ? "jpg" : src.pathExtension
+        let ext = src.pathExtension.isEmpty ? "jpg" : src.pathExtension // prefer image extension
         var dest = cacheDir.appendingPathComponent("\(preferredName).\(ext)")
         if fm.fileExists(atPath: dest.path) {
             // Touch modification date to reflect access for LRU
@@ -294,16 +311,11 @@ actor CloudKitJobLeadService {
         catch { let data = try Data(contentsOf: src); try data.write(to: dest, options: [.atomic]) }
         var rvs = URLResourceValues(); rvs.isExcludedFromBackup = true; try? dest.setResourceValues(rvs)
         try? fm.setAttributes([.protectionKey: FileProtectionType.complete, .modificationDate: Date()], ofItemAtPath: dest.path)
-        // Enforce budget after each write
-        awaitEnforceBudget()
+        // IMPORTANT: no immediate budget enforcement here; we’ll enforce once after the whole fetch
         return dest
     }
 
-    private func awaitEnforceBudget() {
-        Task { [weak self] in await self?.enforceCacheBudget() }
-    }
-
-    // MARK: - CK helpers (unchanged)
+    // MARK: - CK helpers
     private func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try await withCheckedThrowingContinuation { cont in
             db.fetch(withRecordID: id) { record, error in
