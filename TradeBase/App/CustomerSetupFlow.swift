@@ -233,7 +233,15 @@ struct CustomerSetupFlow: View {
         state.profile.bio = String(trimmedBio.prefix(80))
         state.profile.username = nil // usernames not used for customers
 
+        // Persist locally first so the Profile screen has the exact same data immediately.
         state.saveProfile()
+
+        // Also persist to CloudKit when authenticated so the first cloud refresh contains this data.
+        if let identity = state.currentAuthIdentity() {
+            Task {
+                try? await state.cloudProfileStore.saveProfile(state.profile, identity: identity)
+            }
+        }
 
         state.completeCustomerSetup()
         dismiss()
@@ -266,3 +274,4 @@ struct CustomerSetupFlow: View {
         return true
     }
 }
+

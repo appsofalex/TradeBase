@@ -2,7 +2,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// Simple identifiable wrapper for document preview items.
 struct PreviewItem: Identifiable, Equatable {
     let url: URL
     var id: URL { url }
@@ -34,14 +33,13 @@ struct CertificationsSettingsView: View {
                 .fullWidthCardRow()
             }
         }
-        .listStyle(.plain) // Make rows use the full width; we draw our own card background.
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(TBTheme.gradient.ignoresSafeArea())
         .navigationTitle("Edit Certifications")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingPicker) {
             DocumentPicker(allowedContentTypes: [.item]) { url in
-                // Prepare editor with defaults from file
                 pickedURL = url
                 editorTitle = url.deletingPathExtension().lastPathComponent
                 editorIssuer = ""
@@ -68,12 +66,10 @@ struct CertificationsSettingsView: View {
                             let storedURL = try storeDocument(from: pickedURL)
                             await state.addCertification(title: title, issuer: issuer, year: year, fileURL: storedURL)
                             state.saveProfile()
-                        } catch {
-                            print("File store error: \(error)")
-                        }
+                            // Certification is mirrored to CloudKit by addCertification; no separate publicProfileStore call needed.
+                        } catch { print("File store error: \(error)") }
                     }
                 }
-                // Reset transient state
                 self.pickedURL = nil
                 self.editingCertID = nil
             }
@@ -87,8 +83,6 @@ struct CertificationsSettingsView: View {
             }
         }
     }
-
-    // MARK: - Sections
 
     private var certificationsSection: some View {
         Section {
@@ -105,27 +99,18 @@ struct CertificationsSettingsView: View {
                 ForEach(state.profile.certifications) { cert in
                     CertificationRow(
                         cert: cert,
-                        onTap: {
-                            if let url = cert.fileURL {
-                                previewItem = PreviewItem(url: url)
-                            }
-                        },
+                        onTap: { if let url = cert.fileURL { previewItem = PreviewItem(url: url) } },
                         onRename: { beginRename(cert) },
-                        onDelete: {
-                            Task {
-                                await state.deleteCertification(cert)
-                            }
-                        }
+                        onDelete: { Task { await state.deleteCertification(cert) } }
                     )
                     .fullWidthCardRow()
-                    // Provide an explicit swipe-to-delete using the standard Apple destructive red.
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             Task { await state.deleteCertification(cert) }
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
-                        .tint(.red) // Ensure default destructive red styling
+                        .tint(.red)
                     }
                 }
                 .onDelete { idx in
@@ -140,8 +125,6 @@ struct CertificationsSettingsView: View {
                 .foregroundStyle(TBTheme.offWhite)
         }
     }
-
-    // MARK: - Actions
 
     private func beginRename(_ cert: Certification) {
         editorTitle = cert.title
@@ -158,25 +141,15 @@ struct CertificationsSettingsView: View {
         let ext = url.pathExtension
         let base = url.deletingPathExtension().lastPathComponent
         var dest = docs.appendingPathComponent("\(base).\(ext)")
-        // Ensure unique filename
         var i = 1
         while fm.fileExists(atPath: dest.path) {
             dest = docs.appendingPathComponent("\(base)-\(i).\(ext)")
             i += 1
         }
-        // Start accessing if security-scoped
         let needsStop = url.startAccessingSecurityScopedResource()
         defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
         try fm.copyItem(at: url, to: dest)
-
-        // Apply encryption-at-rest to the stored document
         try? fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: dest.path)
-
-        // If you want strictly local (no iCloud backup), uncomment:
-        // var rvs = URLResourceValues()
-        // rvs.isExcludedFromBackup = true
-        // try? dest.setResourceValues(rvs)
-
         return dest
     }
 }

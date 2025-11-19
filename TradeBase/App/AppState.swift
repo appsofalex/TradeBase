@@ -257,6 +257,23 @@ final class AppState {
                 return PublicUserProfile(name: identity, headline: nil, bio: nil, city: nil, avatarURL: nil)
             }
         }
+
+        // NEW: Forward compliance document operations to CloudKitPublicProfileStore
+        func updatePublicLiability(from fileURL: URL, identity: String) async throws {
+            try await impl.updatePublicLiability(from: fileURL, identity: identity)
+        }
+
+        func clearPublicLiability(identity: String) async throws {
+            try await impl.clearPublicLiability(identity: identity)
+        }
+
+        func updateGuarantees(from fileURL: URL, identity: String) async throws {
+            try await impl.updateGuarantees(from: fileURL, identity: identity)
+        }
+
+        func clearGuarantees(identity: String) async throws {
+            try await impl.clearGuarantees(identity: identity)
+        }
     }
     
     let publicProfileStore: PublicProfileStore? = PublicProfileStore(containerIdentifier: "iCloud.com.AlexCo.TradeBase")
@@ -433,6 +450,12 @@ final class AppState {
     // MARK: - Lifecycle/load
 
     func load() async {
+        // Load local profile first so UI shows exactly what the user last saved.
+        await MainActor.run {
+            self.loadPersistedProfile()
+        }
+
+        // Then refresh from cloud in the background; if remote exists, it will overwrite and be re-saved.
         await refreshProfileFromCloud()
         await refreshLeads()
 
@@ -445,10 +468,6 @@ final class AppState {
                     self.tradespersonSetupCompleted = self.tradespersonSetupCompleted || flags.tradespersonSetupCompleted
                 }
             }
-        }
-
-        await MainActor.run {
-            self.loadPersistedProfile()
         }
     }
 
@@ -791,3 +810,4 @@ actor DefaultCloudProfileStore: CloudProfileStore {
         _ = (profile, identity)
     }
 }
+

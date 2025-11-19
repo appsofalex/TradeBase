@@ -97,8 +97,6 @@ struct ProfileView: View {
                         avatarBlock
                         identityBlock
                         cardsBlock
-                        // Removed premiumBlock from profile; CTA remains in CustomerSettingsView
-                        // Removed: certificationsBlock — keep certifications only in the menu
                     }
                     .padding(.horizontal, 18)
                     .padding(.bottom, 28)
@@ -106,7 +104,6 @@ struct ProfileView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Show the settings cog for both roles; route to role-appropriate settings
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: {
                         Image(systemName: "gearshape")
@@ -117,12 +114,10 @@ struct ProfileView: View {
             }
             navigationDestinations
         }
-        // Programmatic PhotosPicker presentation (after permission)
         .photosPicker(isPresented: $isPresentingPhotoPicker,
                       selection: $pickedPhoto,
                       matching: .images,
                       photoLibrary: .shared())
-        // Handle photo selection and mirror avatar to public profile
         .onChange(of: pickedPhoto) { _, newValue in
             guard let item = newValue else { return }
             Task {
@@ -134,32 +129,21 @@ struct ProfileView: View {
                             try? await state.publicProfileStore?.updateAvatar(from: url, identity: identity)
                         }
                     }
-                } catch {
-                    print("Failed to load picked image: \(error)")
-                }
+                } catch { }
                 await MainActor.run { pickedPhoto = nil }
             }
         }
-        // Alert for denied/restricted access
         .alert("Photos Access Needed", isPresented: $showPhotosDeniedAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Open Settings") { openAppSettings() }
         } message: {
             Text("Please allow photo library access to select a profile photo.")
         }
-        // Mirror the private profile to the public profile when this view appears
-        .task {
-            await mirrorTradesProfileToPublicIfNeeded()
-        }
-        // Also re-mirror when the user switches into the tradesperson role
+        .task { await mirrorTradesProfileToPublicIfNeeded() }
         .onChange(of: state.selectedRole) { newRole, _ in
-            if newRole == .tradesperson {
-                Task { await mirrorTradesProfileToPublicIfNeeded() }
-            }
+            if newRole == .tradesperson { Task { await mirrorTradesProfileToPublicIfNeeded() } }
         }
     }
-
-    // MARK: - Subviews (split to reduce type-checker load)
 
     private var headerTitle: some View {
         Text(state.selectedRole == .tradesperson ? "Trades Profile" : "Customer Profile")
@@ -187,7 +171,6 @@ struct ProfileView: View {
                 .foregroundStyle(.white.opacity(0.95))
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            // New: Primary trade/profession line (tradesperson only)
             if state.selectedRole == .tradesperson, !primaryTradeLine.isEmpty {
                 Text(primaryTradeLine)
                     .font(.body)
@@ -199,7 +182,7 @@ struct ProfileView: View {
                 Text(subline)
                     .font(.body)
                     .foregroundStyle(.white.opacity(0.9))
-                    .multilineTextAlignment(.center) // Center the bio/headline
+                    .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
 
@@ -221,7 +204,6 @@ struct ProfileView: View {
                 action: { showingReviews = true }
             )
 
-            // Show these only for tradespeople
             if state.selectedRole == .tradesperson {
                 RowCard(
                     title: "Certifications",
@@ -247,7 +229,6 @@ struct ProfileView: View {
 
     private var navigationDestinations: some View {
         Group {
-            // Settings destination routes by role
             NavigationLink(isActive: $showingSettings) {
                 if state.selectedRole == .tradesperson {
                     TradespersonSettingsView()
@@ -266,7 +247,6 @@ struct ProfileView: View {
             } label: { EmptyView() }
             .hidden()
 
-            // The following destinations are trades-only; guard with role as well
             if state.selectedRole == .tradesperson {
                 NavigationLink(isActive: $showingCerts) {
                     CertificationsSettingsView()
@@ -276,7 +256,7 @@ struct ProfileView: View {
                 NavigationLink(isActive: $showingPLI) {
                     PLIComplianceDetailView(
                         currentURL: state.profile.publicLiabilityFileURL,
-                        onUpload: { }, // handled internally
+                        onUpload: { },
                         onPreview: { _ in },
                         onRemove: { }
                     )
@@ -298,8 +278,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Permission handling
-
     private func handleAddOrChangePhotoTapped() async {
         let status = await requestPhotoLibraryAccessIfNeeded()
         switch status {
@@ -307,10 +285,8 @@ struct ProfileView: View {
             await MainActor.run { isPresentingPhotoPicker = true }
         case .denied, .restricted:
             await MainActor.run { showPhotosDeniedAlert = true }
-        case .notDetermined:
-            break
-        @unknown default:
-            break
+        case .notDetermined: break
+        @unknown default: break
         }
     }
 
@@ -318,9 +294,7 @@ struct ProfileView: View {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if current == .notDetermined {
             return await withCheckedContinuation { cont in
-                PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
-                    cont.resume(returning: status)
-                }
+                PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in cont.resume(returning: status) }
             }
         } else {
             return current
@@ -332,17 +306,11 @@ struct ProfileView: View {
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
-    // MARK: - Public mirror helper
-
     private func mirrorTradesProfileToPublicIfNeeded() async {
         guard state.selectedRole == .tradesperson else { return }
         guard let store = state.publicProfileStore else { return }
         guard let identity = state.currentAuthIdentity(), !identity.isEmpty else { return }
-
-        // Upsert minimal fields to public profile
         try? await store.upsert(from: state.profile, identity: identity)
-
-        // If we have a local avatar file, best-effort upload it too
         if let url = state.profile.avatarURL,
            url.isFileURL,
            FileManager.default.fileExists(atPath: url.path) {
@@ -351,43 +319,8 @@ struct ProfileView: View {
     }
 }
 
-private extension Text {
-    func tbLargeHeader(horizontal: CGFloat = 18) -> some View {
-        self
-            .font(.system(size: 36, weight: .heavy, design: .rounded))
-            .foregroundStyle(.white.opacity(0.95))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 8)
-            .padding(.horizontal, horizontal)
-    }
-}
+// MARK: - PLI / Guarantees detail screens (only mirror calls changed)
 
-// MARK: - PLI / Guarantees detail screens with "add file" pill
-
-// Shared pill button
-private struct CapsuleActionButton: View {
-    var title: String
-    var systemImage: String
-    var tint: Color = TBTheme.brand
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity)
-                .background(Capsule().fill(tint))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-    }
-}
-
-// A tiny helper to copy picked files into our sandbox with protection flags.
-// Mirrors CertificationsSettingsView.storeDocument(from:) behavior.
 private func storeComplianceDocument(from url: URL) throws -> URL {
     let fm = FileManager.default
     let docs = try fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -401,16 +334,10 @@ private func storeComplianceDocument(from url: URL) throws -> URL {
     }
     let needsStop = url.startAccessingSecurityScopedResource()
     defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
-    do {
-        try fm.copyItem(at: url, to: dest)
-    } catch {
-        // Fallback to read/write if direct copy fails (e.g. from iCloud Drive)
-        let data = try Data(contentsOf: url)
-        try data.write(to: dest, options: [.atomic])
-    }
+    do { try fm.copyItem(at: url, to: dest) }
+    catch { let data = try Data(contentsOf: url); try data.write(to: dest, options: [.atomic]) }
     try? fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: dest.path)
-    var rvs = URLResourceValues(); rvs.isExcludedFromBackup = true
-    try? dest.setResourceValues(rvs)
+    var rvs = URLResourceValues(); rvs.isExcludedFromBackup = true; try? dest.setResourceValues(rvs)
     return dest
 }
 
@@ -501,6 +428,9 @@ struct PLIComplianceDetailView: View {
             Task { @MainActor in
                 state.profile.publicLiabilityFileURL = stored
                 state.saveProfile()
+                if let id = state.currentAuthIdentity() {
+                    try? await state.publicProfileStore?.updatePublicLiability(from: stored, identity: id)
+                }
             }
         } catch {
             errorMessage = (error as NSError).localizedDescription
@@ -509,13 +439,12 @@ struct PLIComplianceDetailView: View {
 
     private func removePLI() {
         Task { @MainActor in
-            // Best-effort local delete if inside our sandbox
-            if let url = state.profile.publicLiabilityFileURL,
-               url.isFileURL {
-                try? FileManager.default.removeItem(at: url)
-            }
+            if let url = state.profile.publicLiabilityFileURL, url.isFileURL { try? FileManager.default.removeItem(at: url) }
             state.profile.publicLiabilityFileURL = nil
             state.saveProfile()
+            if let id = state.currentAuthIdentity() {
+                try? await state.publicProfileStore?.clearPublicLiability(identity: id)
+            }
         }
     }
 }
@@ -607,6 +536,9 @@ struct GuaranteesComplianceDetailView: View {
             Task { @MainActor in
                 state.profile.guaranteesFileURL = stored
                 state.saveProfile()
+                if let id = state.currentAuthIdentity() {
+                    try? await state.publicProfileStore?.updateGuarantees(from: stored, identity: id)
+                }
             }
         } catch {
             errorMessage = (error as NSError).localizedDescription
@@ -615,12 +547,44 @@ struct GuaranteesComplianceDetailView: View {
 
     private func removeGuarantees() {
         Task { @MainActor in
-            if let url = state.profile.guaranteesFileURL,
-               url.isFileURL {
-                try? FileManager.default.removeItem(at: url)
-            }
+            if let url = state.profile.guaranteesFileURL, url.isFileURL { try? FileManager.default.removeItem(at: url) }
             state.profile.guaranteesFileURL = nil
             state.saveProfile()
+            if let id = state.currentAuthIdentity() {
+                try? await state.publicProfileStore?.clearGuarantees(identity: id)
+            }
         }
+    }
+}
+
+private struct CapsuleActionButton: View {
+    var title: String
+    var systemImage: String
+    var tint: Color = TBTheme.brand
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
+                .background(Capsule().fill(tint))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+private extension Text {
+    func tbLargeHeader(horizontal: CGFloat = 18) -> some View {
+        self
+            .font(.system(size: 36, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white.opacity(0.95))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8)
+            .padding(.horizontal, horizontal)
     }
 }
