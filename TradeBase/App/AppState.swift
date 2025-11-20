@@ -773,7 +773,6 @@ final class AppState {
             let total = try await messagingService.totalUnreadCount(for: me)
             await MainActor.run { self.unreadMessageCount = max(0, total) }
         } catch {
-            // Keep previous value
         }
     }
 
