@@ -455,4 +455,3 @@ private struct LocalFileImage<Placeholder: View>: View {
         }
     }
 }
-
