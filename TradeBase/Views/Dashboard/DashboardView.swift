@@ -18,10 +18,6 @@ struct DashboardView: View {
     @State private var calendarAccessDenied = false
     @State private var showMessageHub = false
 
-    @State private var showWelcomePill = false
-    @State private var autoHideTask: Task<Void, Never>? = nil
-    private let pillExpandedWidth: CGFloat = 220
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -38,36 +34,12 @@ struct DashboardView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Button {
-                        toggleWelcomePill()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image("logowithoutbg")
-                                .renderingMode(.original)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(height: 24)
-
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.black.opacity(0.35))
-                                    .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
-                                Text("Welcome to TradeBase!")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 24)
-                            }
-                            .frame(width: showWelcomePill ? pillExpandedWidth : 0, height: 28)
-                            .clipped()
-                            .transition(.opacity)
-                        }
-                        .contentShape(Rectangle())
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .animation(.spring(response: 0.28, dampingFraction: 0.9), value: showWelcomePill)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Welcome to TradeBase")
+                    Image("logowithoutbg")
+                        .renderingMode(.original)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 24)
+                        .accessibilityLabel("TradeBase")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -311,23 +283,6 @@ struct DashboardView: View {
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
             root.present(avc, animated: true, completion: nil)
-        }
-    }
-
-    private func toggleWelcomePill() {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-            showWelcomePill.toggle()
-        }
-        autoHideTask?.cancel()
-        if showWelcomePill {
-            autoHideTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-                    showWelcomePill = false
-                }
-            }
-        } else {
-            autoHideTask = nil
         }
     }
 }

@@ -248,11 +248,24 @@ struct TradespersonSettingsView: View {
                 Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                     .foregroundStyle(.secondary)
             }
-            Link(destination: URL(string: "https://example.com/privacy")!) {
+            Link(destination: URL(string: "https://www.notion.so/lexthepogger/TradeBase-Privacy-Policy-2bd2e6386ba68068a82bde74c884700d?source=copy_link")!) {
                 Label("Privacy Policy", systemImage: "hand.raised")
             }
-            Link(destination: URL(string: "https://example.com/terms")!) {
+            Link(destination: URL(string: "https://www.notion.so/lexthepogger/TradeBase-Terms-of-Service-2bd2e6386ba6804e8e34fcf81de480b8?source=copy_link")!) {
                 Label("Terms of Service", systemImage: "doc.plaintext")
+            }
+            
+            // New items
+            Link(destination: URL(string: "https://www.notion.so/lexthepogger/TradeBase-Support-2bd2e6386ba6800ca8b8d24a3fee0877?source=copy_link")!) {
+                Label("Support", systemImage: "questionmark.circle")
+            }
+
+            Link(destination: URL(string: "https://apps.apple.com/us/app/habit-hero-daily-quests/id6751962274")!) {
+                Label("Rate the app", systemImage: "star")
+            }
+
+            ShareLink(item: URL(string: "https://apps.apple.com/us/app/habit-hero-daily-quests/id6751962274")!) {
+                Label("Recommend the app", systemImage: "square.and.arrow.up")
             }
         }
     }

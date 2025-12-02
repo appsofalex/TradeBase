@@ -43,7 +43,18 @@ struct AuthEntryView: View {
             TBTheme.gradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer(minLength: 40)
+                // Removed the spacer here so the logo sits at the very top.
+                
+                Image("logowithoutbg")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 90)
+                    .padding(.top, 10) // Small padding to avoid touching the island directly
+                    .offset(y: -20) // Move logo slightly higher without affecting layout flow
+                    .accessibilityLabel("TradeBase Logo")
+                
+                // Added spacer to push the title down significantly, centering it between logo and footer
+                Spacer()
 
                 VStack(spacing: 6) {
                     Text("Welcome to")
@@ -55,6 +66,7 @@ struct AuthEntryView: View {
                 }
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
+                .offset(y: -40) // Shift headline up slightly
 
                 Spacer()
 
