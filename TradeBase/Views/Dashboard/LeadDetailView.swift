@@ -10,6 +10,8 @@ import UIKit
 struct LeadDetailView: View {
     @Environment(\.appState) private var state
     @Environment(\.switchTradesTab) private var switchTab
+    @Environment(\.dismiss) private var dismiss
+    
     let lead: MarketplaceLead
     @State private var region: MKCoordinateRegion?
 
@@ -34,6 +36,9 @@ struct LeadDetailView: View {
 
     // NEW: WhatsApp error alert
     @State private var whatsappError: String?
+    
+    // NEW: Flag content confirmation
+    @State private var showFlagConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -86,7 +91,22 @@ struct LeadDetailView: View {
         }
         .background(TBTheme.gradient.ignoresSafeArea())
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // Flag Menu
+                Menu {
+                    Button(role: .destructive) {
+                        flagContent()
+                    } label: {
+                        Label("Flag content", systemImage: "flag")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17))
+                        .foregroundStyle(TBTheme.brand)
+                }
+                .accessibilityLabel("More options")
+
+                // Save Button
                 Button {
                     state.toggleSave(lead: lead)
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
@@ -94,6 +114,47 @@ struct LeadDetailView: View {
                     Image(systemName: state.isLeadSaved(lead.id) ? "bookmark.fill" : "bookmark")
                 }
                 .accessibilityLabel(state.isLeadSaved(lead.id) ? "Unsave lead" : "Save lead")
+            }
+        }
+        .overlay {
+            if showFlagConfirmation {
+                ZStack {
+                    Color.black.opacity(0.85).ignoresSafeArea()
+                    
+                    VStack(spacing: 24) {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.system(size: 50))
+                            .foregroundStyle(.white)
+                        
+                        VStack(spacing: 12) {
+                            Text("Content Hidden")
+                                .font(.title2.bold())
+                                .foregroundStyle(.white)
+                            
+                            Text("You’ve flagged this job as objectionable. It has been hidden from your view while we review it.")
+                                .font(.body)
+                                .foregroundStyle(.white.opacity(0.9))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Done")
+                                .font(.headline)
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.top, 8)
+                    }
+                    .padding(32)
+                }
+                .transition(.opacity)
+                .zIndex(100)
             }
         }
         .onAppear {
@@ -149,6 +210,17 @@ struct LeadDetailView: View {
             }
         } label: { EmptyView() }
         .hidden()
+    }
+
+    // MARK: - Actions
+    
+    private func flagContent() {
+        // Hiding the lead via AppState ensures it won't show in lists anymore
+        state.hideLead(id: lead.id)
+        
+        withAnimation {
+            showFlagConfirmation = true
+        }
     }
 
     // MARK: - Photo hydration

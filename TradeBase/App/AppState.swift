@@ -5,6 +5,7 @@
 //  Created by Alex Walters on 16/09/2025.
 //
 
+
 import SwiftUI
 import Observation
 import EventKit
@@ -56,6 +57,15 @@ final class AppState {
             return true
         default:
             return false
+        }
+    }
+    
+    // NEW: EULA Acceptance Flag
+    // Tracks if the user has agreed to the Terms of Service (including objectionable content policy).
+    // This is required by App Store Review Guidelines.
+    var hasAcceptedEULA: Bool = false {
+        didSet {
+            defaults.set(hasAcceptedEULA, forKey: hasAcceptedEULAKey)
         }
     }
 
@@ -152,6 +162,9 @@ final class AppState {
     // Leads local state
     var savedLeadIDs: [String] = []
     var hiddenLeadIDs: [String] = []
+    
+    // NEW: Blocked users list
+    var blockedUserIDs: [String] = []
 
     // Expose marketplace leads to views
     var leads: [MarketplaceLead] = []
@@ -178,6 +191,9 @@ final class AppState {
     private let defaults = UserDefaults.standard
     private let notificationsEnabledKey = "prefs.notificationsEnabled"
     private let appearanceModeKey = "prefs.appearanceMode"
+    
+    // NEW: Key for EULA persistence
+    private let hasAcceptedEULAKey = "prefs.hasAcceptedEULA"
 
     // New: keys for onboarding-completed persistence
     private let customerOnboardingCompletedKey = "onboarding.customer.completed"
@@ -341,6 +357,13 @@ final class AppState {
             self.appearanceMode = mode
         } else {
             self.appearanceMode = .system
+        }
+
+        // NEW: Load EULA state
+        if defaults.object(forKey: hasAcceptedEULAKey) != nil {
+            self.hasAcceptedEULA = defaults.bool(forKey: hasAcceptedEULAKey)
+        } else {
+            self.hasAcceptedEULA = false
         }
 
         // Onboarding-completed flags
@@ -559,6 +582,24 @@ final class AppState {
     func unhideAllLeads() {
         hiddenLeadIDs.removeAll()
     }
+    
+    // MARK: - Blocked Users
+    
+    func blockUser(identity: String) {
+        if !blockedUserIDs.contains(identity) {
+            blockedUserIDs.append(identity)
+            
+            // Also hide all leads from this user immediately
+            let leadsToHide = leads.filter { $0.posterIdentity == identity }
+            for lead in leadsToHide {
+                hideLead(id: lead.id)
+            }
+        }
+    }
+    
+    func isUserBlocked(identity: String) -> Bool {
+        blockedUserIDs.contains(identity)
+    }
 
     // MARK: - Scheduled leads (Your Schedule uses the exact lead tiles)
 
@@ -745,6 +786,7 @@ final class AppState {
         self.profile = AppState.defaultProfile()
         self.unreadMessageCount = 0
         self.scheduledLeadIDs = []
+        self.blockedUserIDs = []
     }
 
     // MARK: - Guest session

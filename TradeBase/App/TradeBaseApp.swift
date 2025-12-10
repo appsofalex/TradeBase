@@ -57,6 +57,13 @@ struct TradeBaseApp: App {
                 .environment(state)
                 .environment(\.appState, state)
                 .environment(\.customerJobListingStore, customerListings)
+                // MODIFIED: Only present EULA if user is authenticated AND hasn't accepted yet.
+                .fullScreenCover(isPresented: Binding(
+                    get: { state.isAuthenticated && !state.hasAcceptedEULA },
+                    set: { _ in }
+                )) {
+                    EULAView(appState: state)
+                }
                 .task {
                     do {
                         await state.load()

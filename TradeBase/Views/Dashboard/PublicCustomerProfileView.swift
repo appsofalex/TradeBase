@@ -6,6 +6,7 @@ struct PublicCustomerProfileView: View {
     let identity: String
 
     @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
 
     @State private var isLoading = false
     @State private var profile: PublicUserProfile? = nil
@@ -13,6 +14,9 @@ struct PublicCustomerProfileView: View {
     // Keep existing local reviews behavior for now
     @State private var reviews: [Review] = []
     @State private var showingReviews = false
+    
+    // Blocking
+    @State private var showBlockConfirmation = false
 
     private var fetchIdentity: String {
         if let current = state.currentAuthIdentity(), current == identity {
@@ -98,6 +102,65 @@ struct PublicCustomerProfileView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                // Only show block option if not viewing own profile
+                if state.currentAuthIdentity() != identity {
+                    Menu {
+                        Button(role: .destructive) {
+                            blockUser()
+                        } label: {
+                            Label("Block user", systemImage: "hand.raised.slash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17))
+                            .foregroundStyle(TBTheme.brand)
+                    }
+                }
+            }
+        }
+        .overlay {
+            if showBlockConfirmation {
+                ZStack {
+                    Color.black.opacity(0.85).ignoresSafeArea()
+                    
+                    VStack(spacing: 24) {
+                        Image(systemName: "hand.raised.slash.fill")
+                            .font(.system(size: 50))
+                            .foregroundStyle(.red)
+                        
+                        VStack(spacing: 12) {
+                            Text("User Blocked")
+                                .font(.title2.bold())
+                                .foregroundStyle(.white)
+                            
+                            Text("You’ve blocked this user. Their jobs and content will no longer be visible to you.")
+                                .font(.body)
+                                .foregroundStyle(.white.opacity(0.9))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Done")
+                                .font(.headline)
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.top, 8)
+                    }
+                    .padding(32)
+                }
+                .transition(.opacity)
+                .zIndex(100)
+            }
+        }
         .navigationDestination(isPresented: $showingReviews) {
             CustomerReviewsListView(reviews: reviews)
         }
@@ -113,6 +176,13 @@ struct PublicCustomerProfileView: View {
                     Review(author: "Tradesperson", rating: 5, text: text, date: Date().addingTimeInterval(-Double(idx) * 86400))
                 }
             }
+        }
+    }
+    
+    private func blockUser() {
+        state.blockUser(identity: identity)
+        withAnimation {
+            showBlockConfirmation = true
         }
     }
 
