@@ -29,10 +29,6 @@ struct CommunitiesView: View {
     @State private var isLoadingPosts = false
     @State private var loadErrorMessage: String? = nil
 
-    // ADMIN passcode sheet
-    @State private var showAdminPasscodeSheet = false
-    @State private var postPendingAdminDelete: CommunityPost? = nil
-
     private enum PendingAction {
         case create
         case edit
@@ -179,28 +175,6 @@ struct CommunitiesView: View {
         }) {
             AuthEntryView(presentation: .gatedModal, hideGuestSkip: true)
         }
-        .sheet(isPresented: $showAdminPasscodeSheet, onDismiss: {
-            postPendingAdminDelete = nil
-        }) {
-            if let target = postPendingAdminDelete {
-                AdminPasscodeSheet(
-                    title: "Delete post?",
-                    message: "Enter the 4-digit passcode to delete this post immediately.",
-                    onCancel: { showAdminPasscodeSheet = false },
-                    onValidated: {
-                        showAdminPasscodeSheet = false
-                        adminDeletePost(target)
-                    }
-                )
-            } else {
-                AdminPasscodeSheet(
-                    title: "Delete post?",
-                    message: "Enter the 4-digit passcode to delete this post immediately.",
-                    onCancel: { showAdminPasscodeSheet = false },
-                    onValidated: { showAdminPasscodeSheet = false }
-                )
-            }
-        }
     }
 
     // MARK: - Content
@@ -280,10 +254,7 @@ struct CommunitiesView: View {
                         }
                         .padding(.vertical, 6)
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            postPendingAdminDelete = post
-                            showAdminPasscodeSheet = true
-                        }
+                        // Remove tap action: now tapping a post does nothing.
                         .if(editable) { view in
                             view.contextMenu {
                                 Button {
@@ -404,18 +375,6 @@ struct CommunitiesView: View {
             }
         }
     }
-
-    private func adminDeletePost(_ post: CommunityPost) {
-        Task {
-            do {
-                try await state.adminDeleteCommunityPost(post)
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Conditional modifier helper
@@ -467,113 +426,5 @@ private func relativeElapsedString(since date: Date, now: Date = Date()) -> Stri
         // Days (days only from here on)
         let days = Int(interval / 86_400)
         return "\(days)d"
-    }
-}
-
-// MARK: - Admin passcode sheet
-
-private struct AdminPasscodeSheet: View {
-    let title: String
-    let message: String
-    var onCancel: () -> Void
-    var onValidated: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var pin: String = ""
-    @State private var showError: Bool = false
-    @FocusState private var isPINFocused: Bool
-
-    private let requiredPIN = "2529"
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                TBTheme.gradient.ignoresSafeArea()
-                VStack(spacing: 16) {
-                    Text(title)
-                        .font(.title2.bold())
-                        .foregroundStyle(TBTheme.offWhite)
-                    Text(message)
-                        .foregroundStyle(TBTheme.offWhiteSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-
-                    HStack(spacing: 12) {
-                        ForEach(0..<4, id: \.self) { idx in
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10).fill(.ultraThinMaterial)
-                                    .frame(width: 52, height: 56)
-                                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TBTheme.offWhite.opacity(0.25)))
-                                Text(character(at: idx))
-                                    .font(.title.bold())
-                                    .foregroundStyle(TBTheme.title)
-                            }
-                        }
-                    }
-                    .overlay(
-                        TextField("", text: Binding(
-                            get: { pin },
-                            set: { newVal in
-                                let digits = newVal.filter { $0.isNumber }
-                                pin = String(digits.prefix(4))
-                                showError = false
-                            })
-                        )
-                        .keyboardType(.numberPad)
-                        .textContentType(.oneTimeCode)
-                        .focused($isPINFocused)
-                        .foregroundColor(.clear)
-                        .accentColor(.clear)
-                        .opacity(0.01)
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
-                    )
-
-                    if showError {
-                        Text("Incorrect passcode.")
-                            .foregroundStyle(.red)
-                    }
-
-                    HStack(spacing: 12) {
-                        PillButton(title: "Cancel", style: .light) {
-                            onCancel()
-                            dismiss()
-                        }
-                        PillButton(title: "Delete", style: .brand) {
-                            validateAndDelete()
-                        }
-                        .disabled(pin.count < 4)
-                        .opacity(pin.count < 4 ? 0.6 : 1)
-                    }
-                    .padding(.top, 8)
-                }
-                .padding(24)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-        }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                isPINFocused = true
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { isPINFocused = true }
-    }
-
-    private func character(at index: Int) -> String {
-        guard index < pin.count else { return "•" }
-        let chars = Array(pin)
-        return String(chars[index])
-    }
-
-    private func validateAndDelete() {
-        if pin == requiredPIN {
-            onValidated()
-            dismiss()
-        } else {
-            showError = true
-            pin = ""
-            isPINFocused = true
-        }
     }
 }

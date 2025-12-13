@@ -202,7 +202,7 @@ struct TradespersonSettingsView: View {
                     showingPremiumUpsell = true
                 } label: {
                     Label {
-                        Text("Upgrade to Premium")
+                        Text("Upgrade to TradeBase Pro")
                     } icon: {
                         Image(systemName: "bolt.badge.a")
                             .foregroundStyle(TBTheme.brand)

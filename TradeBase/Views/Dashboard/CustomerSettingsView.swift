@@ -204,7 +204,7 @@ struct CustomerSettingsView: View {
                 } label: {
                     // Use Label to align with other rows
                     Label {
-                        Text("Upgrade to Premium")
+                        Text("Upgrade to TradeBase Pro")
                     } icon: {
                         Image(systemName: "bolt.badge.a")
                             .foregroundStyle(TBTheme.brand)

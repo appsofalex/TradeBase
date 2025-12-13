@@ -70,6 +70,12 @@ struct JobListingEditorSheet: View {
     // NEW: controls the popover presentation of the date picker
     @State private var isShowingDatePicker = false
 
+    // Objectionable content filtering state
+    private let contentFilter = ObjectionableContentFilter()
+    @State private var flaggedTerms: [String] = []
+    @State private var showObjectionableAlert = false
+    @State private var objectionableMessage: String? = nil
+
     // Validation roughly aligned to wizard
     private var canSave: Bool {
         let hasBasics = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -112,9 +118,26 @@ struct JobListingEditorSheet: View {
                         VStack(spacing: 12) {
                             TextField("Give your job a title", text: $title)
                                 .textFieldStyle(TBTextFieldStyle())
+                                .onChange(of: title) { _, _ in revalidateObjectionable() }
+
                             TextField("Describe the work", text: $description, axis: .vertical)
                                 .textFieldStyle(TBTextFieldStyle())
                                 .lineLimit(3...6)
+                                .onChange(of: description) { _, _ in revalidateObjectionable() }
+
+                            if !flaggedTerms.isEmpty {
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(.yellow)
+                                    Text("Your post contains objectionable terms: \(flaggedTerms.joined(separator: ", ")). Please remove them before publishing.")
+                                        .font(.footnote)
+                                        .foregroundStyle(.yellow)
+                                }
+                                .padding(10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10).fill(Color.yellow.opacity(0.12))
+                                )
+                            }
 
                             // Category dropdown (native Menu + Picker)
                             VStack(alignment: .leading, spacing: 12) {
@@ -463,6 +486,12 @@ struct JobListingEditorSheet: View {
                                 dismiss()
                             }
                             Button("Publish") {
+                                // Validate objectionable content before publishing
+                                if let warning = objectionableWarningIfNeeded() {
+                                    objectionableMessage = warning
+                                    showObjectionableAlert = true
+                                    return
+                                }
                                 let updated = buildUpdatedListing(statusOverride: .active)
                                 onPublish(updated)
                                 dismiss()
@@ -490,6 +519,8 @@ struct JobListingEditorSheet: View {
                 didHydrateOnce = true
                 scheduleGeocode()
                 camera = .region(region)
+                // Initial validation for objectionable content
+                revalidateObjectionable()
             }
             keyboardObserver.start { visible in
                 withAnimation(.easeInOut(duration: 0.25)) {
@@ -504,6 +535,11 @@ struct JobListingEditorSheet: View {
         .onChange(of: photoPickerItems) { _, newItems in
             guard !newItems.isEmpty else { return }
             Task { await importPickedPhotos(newItems) }
+        }
+        .alert("Please remove objectionable content", isPresented: $showObjectionableAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(objectionableMessage ?? "Your post contains objectionable words.")
         }
     }
 
@@ -551,6 +587,19 @@ struct JobListingEditorSheet: View {
         updated.contactPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : phone.trimmingCharacters(in: .whitespacesAndNewlines)
         if let statusOverride { updated.status = statusOverride }
         return updated
+    }
+
+    // MARK: - Objectionable content validation
+
+    private func revalidateObjectionable() {
+        flaggedTerms = contentFilter.flaggedTerms(in: [title, description])
+    }
+
+    private func objectionableWarningIfNeeded() -> String? {
+        revalidateObjectionable()
+        guard !flaggedTerms.isEmpty else { return nil }
+        let list = flaggedTerms.joined(separator: ", ")
+        return "Your post contains objectionable terms: \(list). Please remove them before publishing."
     }
 
     // MARK: - Photos
@@ -645,6 +694,12 @@ struct JobListingEditorSheet: View {
 
     private func postItTapped() {
         guard canSave else { return }
+        // Validate objectionable content before publishing
+        if let warning = objectionableWarningIfNeeded() {
+            objectionableMessage = warning
+            showObjectionableAlert = true
+            return
+        }
         let updated = buildUpdatedListing(statusOverride: .active)
         onPublish(updated)
         dismiss()
