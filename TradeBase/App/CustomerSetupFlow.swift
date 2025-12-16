@@ -114,7 +114,7 @@ struct CustomerSetupFlow: View {
             }
         }
         .onAppear {
-            name = ""
+            name = state.profile.name
             city = state.profile.city ?? ""
             bio = ""
             hasAvatar = currentHasAvatar()

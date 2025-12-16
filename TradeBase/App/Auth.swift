@@ -33,12 +33,14 @@ extension AppState {
             // Update app auth state
             self.authProvider = .google
             self.authEmail = user.profile?.email
-            self.isAuthenticated = true
-            // Ensure forward push on sign-in
-            self.navigationDirection = .forward
-
+            // NOTE: We do NOT set isAuthenticated = true yet to prevent Task cancellation.
+            
             // Hydrate identity-scoped data immediately
             await load()
+            
+            // Now that loading is done, we can update state and navigate.
+            self.isAuthenticated = true
+            self.navigationDirection = .forward
         } catch {
             let ns = error as NSError
             // Map Google "canceled" to ASAuthorizationError.canceled so UI suppresses it.
@@ -80,19 +82,55 @@ extension AppState {
 
         // Persist a stable Apple user identifier for identity building.
         UserDefaults.standard.set(userID, forKey: "apple_user_id")
+        
+        // Capture email (only provided first time or after revoke)
+        let emailToSet = appleCred.email
 
-        // Email is only provided the first time.
-        if let email = appleCred.email {
-            self.authEmail = email
+        // Robust name capture and restore
+        let freshNameKey = "apple_name_fresh_capture"
+        var capturedName: String?
+        if let fullName = appleCred.fullName {
+            let formatter = PersonNameComponentsFormatter()
+            var nameString = formatter.string(from: fullName).trimmingCharacters(in: .whitespacesAndNewlines)
+            if nameString.isEmpty {
+                let given = fullName.givenName ?? ""
+                let family = fullName.familyName ?? ""
+                nameString = "\(given) \(family)".trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if !nameString.isEmpty {
+                capturedName = nameString
+                // Save to disk for later recovery (survives load() overwrites and view transitions)
+                UserDefaults.standard.set(nameString, forKey: freshNameKey)
+            }
         }
 
-        self.authProvider = .apple
-        self.isAuthenticated = true
-        // Ensure forward push on sign-in
-        self.navigationDirection = .forward
+        // Use an unstructured Task to decouple the update sequence from the View's lifecycle.
+        let updateTask = Task { @MainActor in
+            // Apply immediately to in-memory state so UI can reflect it even before hydration
+            if let email = emailToSet {
+                self.authEmail = email
+            }
+            self.authProvider = .apple
+            if let name = capturedName {
+                self.profile.name = name
+            }
 
-        // Hydrate identity-scoped data immediately
-        await load()
+            // Hydrate (may overwrite profile). That's OK; we will re-apply the fresh capture.
+            await load()
+
+            // Force-restore fresh name if present
+            if let recoveredName = UserDefaults.standard.string(forKey: freshNameKey), !recoveredName.isEmpty {
+                self.profile.name = recoveredName
+                // Only now that we've applied it to the active profile, remove the key
+                UserDefaults.standard.removeObject(forKey: freshNameKey)
+            }
+
+            // Finalize State
+            self.isAuthenticated = true
+            self.navigationDirection = .forward
+        }
+        
+        _ = try await updateTask.value
     }
 
     // MARK: - Email Sign Up
@@ -118,11 +156,18 @@ extension AppState {
         self.profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.authProvider = .email
         self.authEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        self.isAuthenticated = true
+        
+        // Delay state change until after load to mimic the safe pattern
+        // self.isAuthenticated = true // Moved down
+        
         // Forward push for email sign-up as well
-        self.navigationDirection = .forward
+        // self.navigationDirection = .forward // Moved down
 
         await load()
+        
+        // Finalize
+        self.isAuthenticated = true
+        self.navigationDirection = .forward
     }
 
     // MARK: - Private helpers
@@ -195,3 +240,4 @@ extension AppState {
         return baseVC
     }
 }
+

@@ -14,7 +14,7 @@ private struct MissingInjectionLogger {
 
 private struct AppStateKey: EnvironmentKey {
     static let defaultValue: AppState = {
-        // In previews, silently provide a fresh instance.
+        // In previews, silently provide a fresh instance
         if PreviewSentinel.isPreview { return AppState() }
 
         #if DEBUG
