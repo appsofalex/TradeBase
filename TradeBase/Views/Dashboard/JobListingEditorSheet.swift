@@ -395,7 +395,7 @@ struct JobListingEditorSheet: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .popover(isPresented: $isShowingDatePicker, arrowEdge: .bottom) {
+                            .popover(isPresented: $isShowingDatePicker) {
                                 VStack(alignment: .leading, spacing: 12) {
                                     DatePicker(
                                         "Preferred start date",
@@ -417,6 +417,7 @@ struct JobListingEditorSheet: View {
                                         .foregroundStyle(TBTheme.brand)
                                 }
                                 .padding()
+                                .frame(width: 320)
                                 .presentationBackground(.ultraThinMaterial)
                             }
 
@@ -604,7 +605,7 @@ struct JobListingEditorSheet: View {
 
     // MARK: - Photos
 
-    private var addPhotosButton: some View { /* unchanged */ 
+    private var addPhotosButton: some View {
         PhotosPicker(
             selection: $photoPickerItems,
             maxSelectionCount: 12,
@@ -643,7 +644,7 @@ struct JobListingEditorSheet: View {
         .accessibilityLabel("Add photos")
     }
 
-    private func thumbnailView(for url: URL) -> some View { /* unchanged */ 
+    private func thumbnailView(for url: URL) -> some View {
         Group {
             if let img = PhotoService.shared.thumbnail(for: url, targetSize: CGSize(width: 200, height: 200)) {
                 Image(uiImage: img)
@@ -665,7 +666,7 @@ struct JobListingEditorSheet: View {
 
     private func removePhoto(_ url: URL) { photos.removeAll { $0 == url }; PhotoService.shared.delete(url) }
 
-    private func importPickedPhotos(_ items: [PhotosPickerItem]) async { /* unchanged */ 
+    private func importPickedPhotos(_ items: [PhotosPickerItem]) async {
         photoAddError = nil
         isAddingPhotos = true
         defer { isAddingPhotos = false }

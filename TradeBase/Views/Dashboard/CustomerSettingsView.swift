@@ -220,10 +220,27 @@ struct CustomerSettingsView: View {
             get: { bindableState.notificationsEnabled },
             set: { newValue in
                 if newValue {
-                    showingPremiumUpsell = true
-                    bindableState.notificationsEnabled = false
+                    // If user is premium, allow it. Otherwise show upsell.
+                    if state.profile.isPremium {
+                        bindableState.notificationsEnabled = true
+                    } else {
+                        showingPremiumUpsell = true
+                        bindableState.notificationsEnabled = false
+                    }
                 } else {
                     bindableState.notificationsEnabled = false
+                }
+            }
+        )
+
+        let appearanceBinding = Binding<AppState.AppearanceMode>(
+            get: { bindableState.appearanceMode },
+            set: { newValue in
+                if state.profile.isPremium {
+                    bindableState.appearanceMode = newValue
+                } else {
+                    showingPremiumUpsell = true
+                    // Do not update state, snapping it back to previous value
                 }
             }
         )
@@ -232,7 +249,7 @@ struct CustomerSettingsView: View {
             Toggle(isOn: notificationsBinding) {
                 Label("Notifications", systemImage: "bell.badge")
             }
-            Picker(selection: $bindableState.appearanceMode) {
+            Picker(selection: appearanceBinding) {
                 Text("System").tag(AppState.AppearanceMode.system)
                 Text("Light").tag(AppState.AppearanceMode.light)
                 Text("Dark").tag(AppState.AppearanceMode.dark)

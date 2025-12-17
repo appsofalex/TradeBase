@@ -184,7 +184,7 @@ struct TradespersonSettingsView: View {
                     Text("Sign out")
                 } icon: {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .baselineOffset(-2) // nudge icon slightly lower
+                        .baselineOffset(-2) // nudges the icon lower
                 }
                 .foregroundStyle(.red)
             }
@@ -218,10 +218,27 @@ struct TradespersonSettingsView: View {
             get: { bindableState.notificationsEnabled },
             set: { newValue in
                 if newValue {
-                    showingPremiumUpsell = true
-                    bindableState.notificationsEnabled = false
+                    if state.profile.isPremium {
+                        bindableState.notificationsEnabled = true
+                    } else {
+                        showingPremiumUpsell = true
+                        bindableState.notificationsEnabled = false
+                    }
                 } else {
                     bindableState.notificationsEnabled = false
+                }
+            }
+        )
+        
+        // Intercept Appearance change -> show upsell if not premium
+        let appearanceBinding = Binding<AppState.AppearanceMode>(
+            get: { bindableState.appearanceMode },
+            set: { newValue in
+                if state.profile.isPremium {
+                    bindableState.appearanceMode = newValue
+                } else {
+                    showingPremiumUpsell = true
+                    // do not set bindableState.appearanceMode
                 }
             }
         )
@@ -230,7 +247,7 @@ struct TradespersonSettingsView: View {
             Toggle(isOn: notificationsBinding) {
                 Label("Notifications", systemImage: "bell.badge")
             }
-            Picker(selection: $bindableState.appearanceMode) {
+            Picker(selection: appearanceBinding) {
                 Text("System").tag(AppState.AppearanceMode.system)
                 Text("Light").tag(AppState.AppearanceMode.light)
                 Text("Dark").tag(AppState.AppearanceMode.dark)
