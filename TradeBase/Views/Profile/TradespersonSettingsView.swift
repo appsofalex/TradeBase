@@ -277,11 +277,11 @@ struct TradespersonSettingsView: View {
                 Label("Support", systemImage: "questionmark.circle")
             }
 
-            Link(destination: URL(string: "https://apps.apple.com/us/app/habit-hero-daily-quests/id6751962274")!) {
+            Link(destination: URL(string: "https://apps.apple.com/us/app/tradebase-find-trades-fast/id6753321961")!) {
                 Label("Rate the app", systemImage: "star")
             }
 
-            ShareLink(item: URL(string: "https://apps.apple.com/us/app/habit-hero-daily-quests/id6751962274")!) {
+            ShareLink(item: URL(string: "https://apps.apple.com/us/app/tradebase-find-trades-fast/id6753321961")!) {
                 Label("Recommend the app", systemImage: "square.and.arrow.up")
             }
         }
